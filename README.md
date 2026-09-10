@@ -1,123 +1,178 @@
-# dry-rs
+# dry-score
 
-Structural duplication detector for Rust. It finds Type-1 / Type-2 / Type-3
-clones by comparing **normalized AST structure** (not raw text), scores pairs
-with Jaccard similarity over subtree fingerprints, and routes findings into
-agentic tiers for CI and automation.
+dry-score finds **structural clones** in Rust source. It compares normalized AST
+forms—not raw text—scores pairs with Jaccard similarity over subtree
+fingerprints, and routes findings into agentic tiers for CI and automation.
 
-## Quick start
+It is a duplication detector. It is not a style linter or a complexity scorer.
+
+The shipped CLI is **`dry-rs`**.
+
+## Requirements
+
+- Rust toolchain **1.94.0** ([`rust-toolchain.toml`](rust-toolchain.toml))
+
+## Build
 
 ```bash
 cargo build --release -p dry-rs
-./target/release/dry-rs path/to/crate --format both --json-out report.json
 ```
 
-Options:
+Or run without installing a binary:
+
+```bash
+cargo run -p dry-rs -- path/to/crate
+```
+
+## Quick start
+
+1. Build the release binary (see above).
+2. Point `dry-rs` at one or more analysis roots (default: `.`).
+3. Read the text report, or write JSON when you need machine output.
+
+```bash
+./target/release/dry-rs . --format both --json-out report.json
+```
+
+A text report lists clone type, score, tier, and member spans. With
+`--fail-on-findings`, exit code `1` means the tool reported at least one
+finding.
+
+## Usage
+
+```bash
+dry-rs [PATH]... [options]
+```
+
+If you omit `PATH`, dry-rs analyzes `.`.
 
 | Flag | Meaning |
 | --- | --- |
-| `--threshold FLOAT` | Minimum Jaccard score to report (default `0.85`) |
-| `--format text\|json\|both` | Human summary, JSON envelope, or both |
 | `--config PATH` | Load knobs from a TOML file |
-| `--min-nodes N` | Drop forms smaller than N structural nodes |
-| `--min-lines N` | Drop forms spanning fewer than N source lines |
+| `--threshold FLOAT` | Minimum Jaccard score to report (default `0.85`; must be in `[0.0, 1.0]`) |
+| `--format text\|json\|both` | Human summary, JSON envelope, or both (default `text`) |
+| `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
+| `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
+| `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
 | `--json-out PATH` | When `--format both`, write JSON to this path |
+| `--help`, `-h` | Print help and exit `0` |
 
-Walk-up discovery loads `dry.toml` from the current directory or a parent.
-See [`dry.example.toml`](dry.example.toml) for the full schema.
+Walk-up discovery loads `dry.toml` from the current directory or a parent unless
+you pass `--config`. Analysis roots are trusted local trees; the walker does
+**not** follow symlinks.
 
-Analysis roots are treated as trusted local trees; the walker does not follow
-symlinks.
+## Configuration
 
-Exit codes: `0` success (including `--help`), `1` findings (only with fail-on),
-`2` usage/config error.
+See [`dry.example.toml`](dry.example.toml) for the full annotated schema.
+Defaults match the table below.
 
-## Architecture
+| Section | Key | Default |
+| --- | --- | --- |
+| `[gate]` | `threshold` | `0.85` |
+| `[gate]` | `fail_on_findings` | `false` |
+| `[output]` | `format` | `"text"` |
+| `[walk]` | `extensions` | `["rs"]` |
+| `[walk]` | `exclude` | `["target", ".git", "fixtures", "tests"]` |
+| `[walk]` | `min_nodes` | `10` |
+| `[walk]` | `min_lines` | `3` |
 
-| Crate | Role |
-| --- | --- |
-| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, comparison, walk, config, reporters |
-| [`crates/dry-rs`](crates/dry-rs) | CLI + Rust `syn` normalizer |
+Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
+with the defaults.
 
-`dry-core` has **no AST dependencies**. Future language adapters implement
-`LanguageNormalizer` and reuse the same comparison engine.
+## How detection works
 
-Pipeline: discover files → parse/normalize → fingerprint index → match → report.
+Pipeline: discover files → parse/normalize → fingerprint → match → report.
 
-## Detection semantics
+### Normalize (Rust adapter)
 
-**Normalization (Rust adapter):**
-
-- Comments and whitespace are discarded by the parser.
+- The parser discards comments and whitespace.
 - Identifiers become positional placeholders so renamed twins share fingerprints.
-- Raw identifier spellings are retained in an `ident_trace` (occurrence
-  sequence, not a unique set) for Type-1 vs Type-2.
+- Raw identifier spellings stay in an `ident_trace` (occurrence sequence) for
+  Type-1 versus Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
-- Control-flow and operators keep structural labels.
-- Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.
-- Macros fingerprint as name + delimiter + token-tree structure (not expansion).
-- Trait default method bodies are extracted as named forms.
-- Each subtree hashes to a `u64` via fixed FNV-1a; the set of those hashes is the fingerprint.
+- Control flow, operators, and patterns keep structural labels.
+- Macros fingerprint as name + delimiter + token-tree shape (not expansion).
+- Each subtree hashes to a `u64` (fixed FNV-1a); the set of those hashes is the
+  fingerprint.
 
-**Matching:**
+### Match
 
-1. Exact buckets: identical fingerprint sets → score `1.0`
-2. Near-miss: fingerprint inverted index + greedy claim (one pairing per form); Jaccard with set-size window
-3. Production and test forms (`FormKind`) are never paired with each other
-4. Sort findings most exact → least exact
+1. Identical fingerprint sets score `1.0` (exact buckets).
+2. Remaining forms use an inverted fingerprint index and greedy near-miss
+   Jaccard (with a set-size window).
+3. Production and test forms (`FormKind`) never pair.
+4. Findings sort most exact → least exact.
 
-**Labels:**
+### Labels
 
 | Field | Values |
 | --- | --- |
 | `clone_type` | `type_1` (exact ids), `type_2` (renamed), `type_3` (near-miss) |
-| `tier` | `auto_refactor` (≥0.95), `review_first` (≥0.85), `advisory` (≥ threshold); when threshold ≥ 0.85, advisory does not appear |
+| `tier` | `auto_refactor` (≥0.95), `review_first` (≥0.85), `advisory` (≥ threshold and &lt; 0.85) |
 
-Suppress a span with a full-line `// dry-rs:ignore` comment, or a whole file
-with a full-line `// dry-rs:ignore-file` near the top.
+When the configured threshold is ≥ 0.85, emitted findings do not use the
+advisory band.
+
+Deep module maps and invariants:
+[`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
+
+## Suppressions
+
+Use a **full-line** `//` comment (optional leading whitespace). Trailing
+comments and string substrings do not count.
+
+- Span: `// dry-rs:ignore` or `// dry-rs:ignore. reason`
+- File: `// dry-rs:ignore-file` near the top of the file
+
+## Exit codes
+
+| Code | Meaning | What to do |
+| --- | --- | --- |
+| `0` | Success (including `--help`) | Nothing required |
+| `1` | Findings present and fail-on-findings is on | Inspect the report; fix clones or disable fail-on for report-only runs |
+| `2` | Usage, config, analyze, or write error | Fix flags or `dry.toml`; check paths and permissions |
 
 ## Fixtures
 
 Intentional corpora live under
 [`crates/dry-rs/tests/fixtures/`](crates/dry-rs/tests/fixtures/):
 
-- `type_1_exact` — identical bodies and identifiers
-- `type_2_renamed` — identical structure, renamed locals/params
-- `type_3_near_miss` — shared structure with a small edit
-- `non_clone` — similar names, different control flow
+| Corpus | Demonstrates |
+| --- | --- |
+| `type_1_exact` | Identical bodies and identifiers |
+| `type_2_renamed` | Same structure, renamed locals/params |
+| `type_3_near_miss` | Shared structure with a small edit |
+| `non_clone` | Similar names, different control flow (no findings) |
 
-## CI
-
-Workflows under [`.github/workflows/`](.github/workflows/):
+## CI and local verify
 
 | Workflow | Gate |
 | --- | --- |
-| [`lint.yml`](.github/workflows/lint.yml) | workspace check, fmt, clippy `-D warnings`, rustdoc `-D warnings`, 500-line cap |
+| [`lint.yml`](.github/workflows/lint.yml) | Workspace check, fmt, clippy `-D warnings`, rustdoc `-D warnings`, 500-line cap |
 | [`test.yml`](.github/workflows/test.yml) | `cargo test --workspace --locked` |
 | [`supply-chain.yml`](.github/workflows/supply-chain.yml) | `cargo deny` + `cargo audit` |
-| [`dry-rs.yml`](.github/workflows/dry-rs.yml) | release build; scan `.`; require **findings=0**; JSON artifact + step summary |
+| [`dry-rs.yml`](.github/workflows/dry-rs.yml) | Release build; scan `.`; require **findings=0**; JSON artifact + step summary |
 
-Local parity: [`scripts/verify.sh`](scripts/verify.sh) (`lite` / `full`). See [AGENTS.md](AGENTS.md).
-
-## Workspace tooling
-
-This repo also carries opinionated lint config and agent guidance:
-
-| Area | Location |
-| --- | --- |
-| Workspace + lints | [`Cargo.toml`](Cargo.toml) |
-| Clippy thresholds | [`clippy.toml`](clippy.toml) (cognitive 8, type 200, fn 50 lines) |
-| Toolchain | [`rust-toolchain.toml`](rust-toolchain.toml) (**1.94.0**) |
-| Lint CI | [`.github/workflows/lint.yml`](.github/workflows/lint.yml) |
-| Test CI | [`.github/workflows/test.yml`](.github/workflows/test.yml) |
-| Supply chain | [`.github/workflows/supply-chain.yml`](.github/workflows/supply-chain.yml) |
-| Agent index | [AGENTS.md](AGENTS.md) |
+Local parity:
 
 ```bash
-./scripts/verify.sh lite
-./scripts/verify.sh full
+./scripts/verify.sh lite   # fmt, clippy, test
+./scripts/verify.sh full   # lite + deny, audit, dry-rs findings=0
 ```
+
+Contributor conventions: [AGENTS.md](AGENTS.md).
+
+## Workspace layout
+
+| Crate | Role |
+| --- | --- |
+| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, reporters (no AST deps) |
+| [`crates/dry-rs`](crates/dry-rs) | CLI and Rust `syn` adapter |
+
+Future language adapters implement `LanguageNormalizer` and reuse `dry-core`
+comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
+and module map.
 
 ## License
 

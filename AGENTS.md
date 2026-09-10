@@ -119,6 +119,7 @@ Cross-crate or pipeline changes: read
 
 - [README.md](README.md) — product overview, detection semantics, fixtures, CI notes
 - [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md) — crate boundaries, analysis pipeline, module maps, and invariants
+- [DeepWiki](https://deepwiki.com/deangrant/dry-score) — indexed project wiki for additional architecture, API, and pipeline context
 - [`Cargo.toml`](Cargo.toml) — virtual workspace members and maximum `[workspace.lints]`
 - [`clippy.toml`](clippy.toml) — complexity and line thresholds
 - [`rustfmt.toml`](rustfmt.toml) — `max_width` 100
