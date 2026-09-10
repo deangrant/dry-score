@@ -1,0 +1,26 @@
+[package]
+name = "dry-rs"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Structural duplication detector for Rust source"
+readme = "../../README.md"
+repository = "https://github.com/local/dry-score"
+keywords = ["dry", "duplication", "clone-detection"]
+categories = ["development-tools", "command-line-utilities"]
+
+[lib]
+name = "dry_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dry-rs"
+path = "src/main.rs"
+
+[dependencies]
+dry-core = { workspace = true }
+syn = { workspace = true }
+proc-macro2 = { workspace = true }
+
+[lints]
+workspace = true

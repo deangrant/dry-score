@@ -1,0 +1,51 @@
+name: dry-rs
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  dry-rs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+
+      - name: Build dry-rs
+        run: cargo build --release -p dry-rs --locked
+
+      - name: Run structural duplication analysis
+        run: |
+          ./target/release/dry-rs \
+            crates/dry-rs/src \
+            crates/dry-core/src \
+            --format both \
+            --json-out dry-rs-report.json \
+            --no-fail-on-findings
+
+      - name: Upload JSON report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dry-rs-report
+          path: dry-rs-report.json
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## dry-rs"
+            echo
+            ./target/release/dry-rs \
+              crates/dry-rs/src \
+              crates/dry-core/src \
+              --format text \
+              --no-fail-on-findings
+          } >> "$GITHUB_STEP_SUMMARY"

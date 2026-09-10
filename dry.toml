@@ -1,0 +1,14 @@
+# dry.toml — workspace dogfood configuration.
+
+[gate]
+threshold = 0.85
+fail_on_findings = false
+
+[output]
+format = "text"
+
+[walk]
+extensions = ["rs"]
+exclude = ["target", ".git", "fixtures", "tests"]
+min_nodes = 10
+min_lines = 3
