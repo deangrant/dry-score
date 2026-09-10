@@ -159,16 +159,34 @@ impl std::fmt::Display for ConfigError {
 
 impl std::error::Error for ConfigError {}
 
+/// Ensures `threshold` is a finite value in `[0.0, 1.0]`.
+///
+/// # Errors
+///
+/// Returns [`ConfigError`] when the value is NaN, infinite, or out of range.
+pub fn validate_threshold(threshold: f64) -> Result<(), ConfigError> {
+    if threshold.is_finite() && (0.0..=1.0).contains(&threshold) {
+        Ok(())
+    } else {
+        Err(ConfigError::new(format!(
+            "gate.threshold must be in [0.0, 1.0], got {threshold}"
+        )))
+    }
+}
+
 /// Loads configuration from an explicit path.
 ///
 /// # Errors
 ///
-/// Returns [`ConfigError`] when the file cannot be read or parsed.
+/// Returns [`ConfigError`] when the file cannot be read or parsed, or when
+/// `gate.threshold` is outside `[0.0, 1.0]`.
 pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let raw = fs::read_to_string(path)
         .map_err(|err| ConfigError::new(format!("failed to read {}: {err}", path.display())))?;
-    toml::from_str(&raw)
-        .map_err(|err| ConfigError::new(format!("failed to parse {}: {err}", path.display())))
+    let config: Config = toml::from_str(&raw)
+        .map_err(|err| ConfigError::new(format!("failed to parse {}: {err}", path.display())))?;
+    validate_threshold(config.gate.threshold)?;
+    Ok(config)
 }
 
 /// Walks upward from `start` looking for `dry.toml`.
@@ -237,6 +255,29 @@ mod tests {
         let path = dir.join("dry.toml");
         assert!(fs::write(&path, "[[[not toml").is_ok());
         assert!(load_config(&path).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn validate_threshold_bounds() {
+        assert!(validate_threshold(0.0).is_ok());
+        assert!(validate_threshold(1.0).is_ok());
+        assert!(validate_threshold(0.85).is_ok());
+        assert!(validate_threshold(-0.1).is_err());
+        assert!(validate_threshold(1.1).is_err());
+        assert!(validate_threshold(f64::NAN).is_err());
+        assert!(validate_threshold(f64::INFINITY).is_err());
+    }
+
+    #[test]
+    fn load_config_rejects_out_of_range_threshold() {
+        let dir = temp_dir("cfg-threshold");
+        let low = dir.join("low.toml");
+        let high = dir.join("high.toml");
+        assert!(fs::write(&low, "[gate]\nthreshold = -0.1\n").is_ok());
+        assert!(fs::write(&high, "[gate]\nthreshold = 1.1\n").is_ok());
+        assert!(load_config(&low).is_err());
+        assert!(load_config(&high).is_err());
         let _ = fs::remove_dir_all(dir);
     }
 

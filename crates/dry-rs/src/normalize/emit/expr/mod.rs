@@ -9,6 +9,7 @@ use syn::Expr;
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
+use super::mac::emit_macro;
 use control::{
     emit_assign, emit_async, emit_await, emit_for, emit_if, emit_loop, emit_match, emit_while,
 };
@@ -51,13 +52,13 @@ fn try_emit_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormN
         Expr::Return(ret) => emit_return(ret, placeholders),
         Expr::Infer(_) => emit_infer(),
         Expr::Continue(_) => emit_continue(),
-        _ => return try_emit_macro(expr),
+        _ => return try_emit_macro(expr, placeholders),
     })
 }
 
-fn try_emit_macro(expr: &Expr) -> Option<NormNode> {
+fn try_emit_macro(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     match expr {
-        Expr::Macro(_) => Some(NormNode::leaf("expr_macro")),
+        Expr::Macro(mac) => Some(emit_macro(&mac.mac, placeholders)),
         _ => None,
     }
 }

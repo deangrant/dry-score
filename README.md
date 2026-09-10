@@ -49,23 +49,27 @@ Pipeline: discover files → parse/normalize → fingerprint index → match →
 - Raw identifier spellings are retained in an `ident_trace` for Type-1 vs Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control-flow and operators keep structural labels.
+- Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.
+- Macros fingerprint as name + delimiter + token-tree structure (not expansion).
+- Trait default method bodies are extracted as named forms.
 - Each subtree hashes to a `u64` via fixed FNV-1a; the set of those hashes is the fingerprint.
 
 **Matching:**
 
 1. Exact buckets: identical fingerprint sets → score `1.0`
-2. Near-miss: sliding-window Jaccard with size-ratio early break
-3. Sort findings most exact → least exact
+2. Near-miss: fingerprint inverted index + greedy claim (one pairing per form); Jaccard with set-size window
+3. Production and test forms (`FormKind`) are never paired with each other
+4. Sort findings most exact → least exact
 
 **Labels:**
 
 | Field | Values |
 | --- | --- |
 | `clone_type` | `type_1` (exact ids), `type_2` (renamed), `type_3` (near-miss) |
-| `tier` | `auto_refactor` (≥0.95), `review_first` (≥0.85), `advisory` (≥ threshold) |
+| `tier` | `auto_refactor` (≥0.95), `review_first` (≥0.85), `advisory` (≥ threshold); when threshold ≥ 0.85, advisory does not appear |
 
-Suppress a span with `// dry-rs:ignore`, or a whole file with
-`// dry-rs:ignore-file` near the top.
+Suppress a span with a full-line `// dry-rs:ignore` comment, or a whole file
+with a full-line `// dry-rs:ignore-file` near the top.
 
 ## Fixtures
 

@@ -20,7 +20,7 @@ pub struct NormalizedForm {
     pub span: FormSpan,
     /// Production versus test classification.
     pub kind: FormKind,
-    /// Count of structural nodes used for window pruning.
+    /// Count of structural nodes used for extract-time size filtering.
     pub node_count: u32,
     /// Structural fingerprint set (subtree hashes).
     pub fingerprints: BTreeSet<u64>,

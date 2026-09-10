@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use syn::visit::Visit;
-use syn::{Attribute, File, ImplItem, Item, ItemFn, ItemImpl};
+use syn::{Attribute, File, ImplItem, Item, ItemFn, ItemImpl, ItemTrait, TraitItem};
 
 use dry_core::NormalizedForm;
 
@@ -65,6 +65,22 @@ impl<'ast> Visit<'ast> for Extractor<'_> {
             self.maybe_emit_fn(&name, &method.block, &method.sig, is_test);
         }
         syn::visit::visit_item_impl(self, node);
+    }
+
+    fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let trait_name = node.ident.to_string();
+        for item in &node.items {
+            let TraitItem::Fn(method) = item else {
+                continue;
+            };
+            let Some(block) = &method.default else {
+                continue;
+            };
+            let name = format!("{trait_name}::{}", method.sig.ident);
+            let is_test = self.in_test_cfg || has_test_attr(&method.attrs);
+            self.maybe_emit_fn(&name, block, &method.sig, is_test);
+        }
+        syn::visit::visit_item_trait(self, node);
     }
 
     fn visit_item(&mut self, node: &'ast Item) {
@@ -255,5 +271,27 @@ mod tests {
         assert!(attr_is_cfg_test(&cfg));
         let other: syn::Attribute = syn::parse_quote!(#[allow(dead_code)]);
         assert!(!attr_is_cfg_test(&other));
+    }
+
+    #[test]
+    fn extracts_trait_default_methods_only() {
+        let source = r"
+            trait T {
+                fn required(&self);
+                fn with_default(&self, x: i32) {
+                    let y = x + 1;
+                    let z = y + 2;
+                    let w = z + 3;
+                }
+            }
+        ";
+        let parsed = parse_file(source);
+        assert!(parsed.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts parse ok")]
+        let file = parsed.expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(&file, Path::new("t.rs"), source, 5, 3, &mut next_id);
+        assert!(forms.iter().any(|f| f.name == "T::with_default"));
+        assert!(!forms.iter().any(|f| f.name == "T::required"));
     }
 }

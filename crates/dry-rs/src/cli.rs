@@ -4,7 +4,7 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use dry_core::{Config, OutputFormat, discover_config, load_config};
+use dry_core::{Config, OutputFormat, discover_config, load_config, validate_threshold};
 
 /// Parsed CLI invocation.
 #[derive(Debug, Clone, PartialEq)]
@@ -202,6 +202,7 @@ fn finish_args(mut raw: RawFlags) -> Result<CliArgs, CliError> {
     }
     let mut config = load_effective_config(raw.config_path.as_deref())?;
     overlay_cli_onto_config(&raw, &mut config);
+    validate_threshold(config.gate.threshold).map_err(|err| CliError::usage(err.to_string()))?;
     Ok(CliArgs {
         paths: raw.paths,
         config,
@@ -305,6 +306,14 @@ mod tests {
         assert!(parse_args(args(&["--threshold"])).is_err());
         assert!(parse_args(args(&["--format", "nope"])).is_err());
         assert!(parse_args(args(&["--min-nodes", "x"])).is_err());
+    }
+
+    #[test]
+    fn threshold_bounds() {
+        assert!(parse_args(args(&["--threshold", "0.0"])).is_ok());
+        assert!(parse_args(args(&["--threshold", "1.0"])).is_ok());
+        assert!(parse_args(args(&["--threshold", "-0.1"])).is_err());
+        assert!(parse_args(args(&["--threshold", "1.1"])).is_err());
     }
 
     #[test]

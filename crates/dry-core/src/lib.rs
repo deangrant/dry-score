@@ -19,7 +19,7 @@ pub use analyze::{AnalysisResult, analyze};
 #[doc(inline)]
 pub use compare::compare;
 #[doc(inline)]
-pub use config::{Config, OutputFormat, discover_config, load_config};
+pub use config::{Config, OutputFormat, discover_config, load_config, validate_threshold};
 #[doc(inline)]
 pub use domain::{
     CloneType, Finding, FormKind, FormMember, FormSpan, NormalizedForm, ReportSummary, Tier,
