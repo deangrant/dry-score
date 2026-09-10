@@ -277,11 +277,19 @@ mod tests {
     fn extracts_trait_default_methods_only() {
         let source = r"
             trait T {
+                type Item;
+                const N: i32;
                 fn required(&self);
                 fn with_default(&self, x: i32) {
                     let y = x + 1;
                     let z = y + 2;
                     let w = z + 3;
+                }
+                #[test]
+                fn tested_default(&self) {
+                    let a = 1;
+                    let b = a + 1;
+                    let c = b + 1;
                 }
             }
         ";
@@ -292,6 +300,12 @@ mod tests {
         let mut next_id = 1;
         let forms = extract_forms(&file, Path::new("t.rs"), source, 5, 3, &mut next_id);
         assert!(forms.iter().any(|f| f.name == "T::with_default"));
+        assert!(forms.iter().any(|f| f.name == "T::tested_default"));
+        assert!(
+            forms
+                .iter()
+                .any(|f| f.name == "T::tested_default" && f.kind == dry_core::FormKind::Test)
+        );
         assert!(!forms.iter().any(|f| f.name == "T::required"));
     }
 }

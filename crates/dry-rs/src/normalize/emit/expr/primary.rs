@@ -111,12 +111,31 @@ fn field_member_name(member: &syn::Member) -> String {
 }
 
 pub(super) const fn lit_label(lit: &Lit) -> &'static str {
+    match lit_text_label(lit) {
+        Some(label) => label,
+        None => lit_numeric_label(lit),
+    }
+}
+
+const fn lit_text_label(lit: &Lit) -> Option<&'static str> {
     match lit {
-        Lit::Str(_) => "lit_str",
-        Lit::ByteStr(_) => "lit_bytestr",
-        Lit::CStr(_) => "lit_cstr",
-        Lit::Byte(_) => "lit_byte",
-        Lit::Char(_) => "lit_char",
+        Lit::Str(_) => Some("lit_str"),
+        Lit::ByteStr(_) => Some("lit_bytestr"),
+        Lit::CStr(_) => Some("lit_cstr"),
+        _ => lit_byte_char_label(lit),
+    }
+}
+
+const fn lit_byte_char_label(lit: &Lit) -> Option<&'static str> {
+    match lit {
+        Lit::Byte(_) => Some("lit_byte"),
+        Lit::Char(_) => Some("lit_char"),
+        _ => None,
+    }
+}
+
+const fn lit_numeric_label(lit: &Lit) -> &'static str {
+    match lit {
         Lit::Int(_) => "lit_int",
         Lit::Float(_) => "lit_float",
         Lit::Bool(_) => "lit_bool",
@@ -144,6 +163,10 @@ mod tests {
         assert_eq!(lit_label(&parse_quote!(1.5)), "lit_float");
         assert_eq!(lit_label(&parse_quote!(true)), "lit_bool");
         assert_eq!(lit_label(&parse_quote!(c"hi")), "lit_cstr");
+        assert_eq!(
+            lit_label(&syn::Lit::Verbatim(proc_macro2::Literal::i32_unsuffixed(0))),
+            "lit_other"
+        );
     }
 
     #[test]

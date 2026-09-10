@@ -26,10 +26,23 @@ pub(super) fn emit_cast(cast: &syn::ExprCast, placeholders: &mut PlaceholderMap)
 }
 
 pub(super) fn emit_range(range: &syn::ExprRange, placeholders: &mut PlaceholderMap) -> NormNode {
-    let label = match range.limits {
+    let label = range_label(range.limits);
+    let children = range_bound_nodes(range, placeholders);
+    if children.is_empty() {
+        NormNode::leaf(label)
+    } else {
+        NormNode::branch(label, children)
+    }
+}
+
+const fn range_label(limits: RangeLimits) -> &'static str {
+    match limits {
         RangeLimits::HalfOpen(_) => "range",
         RangeLimits::Closed(_) => "range_inclusive",
-    };
+    }
+}
+
+fn range_bound_nodes(range: &syn::ExprRange, placeholders: &mut PlaceholderMap) -> Vec<NormNode> {
     let mut children = Vec::new();
     if let Some(start) = &range.start {
         children.push(emit_expr(start, placeholders));
@@ -37,11 +50,7 @@ pub(super) fn emit_range(range: &syn::ExprRange, placeholders: &mut PlaceholderM
     if let Some(end) = &range.end {
         children.push(emit_expr(end, placeholders));
     }
-    if children.is_empty() {
-        NormNode::leaf(label)
-    } else {
-        NormNode::branch(label, children)
-    }
+    children
 }
 
 pub(super) fn emit_struct(
@@ -152,6 +161,10 @@ mod tests {
         clippy::cognitive_complexity,
         reason = "misc emitter corpus is intentionally flat assertions"
     )]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "misc emitter corpus is intentionally flat assertions"
+    )]
     fn misc_emitter_labels() {
         let mut p = PlaceholderMap::default();
         assert_eq!(emit_expr(&parse_quote!(break), &mut p).label, "break");
@@ -163,8 +176,26 @@ mod tests {
             emit_expr(&parse_quote!(1..=n), &mut p).label,
             "range_inclusive"
         );
+        let open_full = Expr::Range(syn::ExprRange {
+            attrs: Vec::new(),
+            start: None,
+            limits: RangeLimits::HalfOpen(syn::token::DotDot::default()),
+            end: None,
+        });
+        assert_eq!(emit_expr(&open_full, &mut p).label, "range");
+        let closed_full = Expr::Range(syn::ExprRange {
+            attrs: Vec::new(),
+            start: None,
+            limits: RangeLimits::Closed(syn::token::DotDotEq::default()),
+            end: None,
+        });
+        assert_eq!(emit_expr(&closed_full, &mut p).label, "range_inclusive");
         assert_eq!(
-            emit_expr(&parse_quote!(Point { x: 1, y: 2 }), &mut p).label,
+            emit_expr(&parse_quote!(Point { x: 1, y: 2, ..base }), &mut p).label,
+            "struct"
+        );
+        assert_eq!(
+            emit_expr(&parse_quote!(Pair { 0: 1, 1: 2 }), &mut p).label,
             "struct"
         );
         assert_eq!(emit_expr(&parse_quote!([0; 4]), &mut p).label, "repeat");
@@ -175,6 +206,10 @@ mod tests {
         assert_eq!(
             emit_expr(&parse_quote!(const { 1 }), &mut p).label,
             "const_block"
+        );
+        assert_eq!(
+            emit_expr(&parse_quote!(try { 1 }), &mut p).label,
+            "try_block"
         );
         assert_eq!(
             emit_expr(&parse_quote!(&raw const x), &mut p).label,
@@ -191,6 +226,21 @@ mod tests {
             expr: None,
         });
         assert_eq!(emit_expr(&yield_expr, &mut p).label, "yield");
+        let yield_val = Expr::Yield(syn::ExprYield {
+            attrs: Vec::new(),
+            yield_token: syn::token::Yield::default(),
+            expr: Some(Box::new(parse_quote!(1))),
+        });
+        assert_eq!(emit_expr(&yield_val, &mut p).label, "yield");
+        let grouped = Expr::Group(syn::ExprGroup {
+            attrs: Vec::new(),
+            group_token: syn::token::Group {
+                span: proc_macro2::Span::call_site(),
+            },
+            expr: Box::new(parse_quote!(1)),
+        });
+        assert_eq!(emit_expr(&grouped, &mut p).label, "lit_int");
+        assert_eq!(emit_expr(&parse_quote!((1)), &mut p).label, "lit_int");
     }
 
     #[test]

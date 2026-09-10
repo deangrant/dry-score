@@ -45,3 +45,18 @@ fn binary_help_and_analyze() {
         .output();
     assert!(json.is_ok());
 }
+
+#[test]
+fn binary_unknown_flag_prints_usage_error() {
+    let out = bin().arg("--not-a-real-flag").output();
+    assert!(out.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let out = out.expect("run");
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        !stderr.is_empty() || !stdout.is_empty(),
+        "expected usage/error output"
+    );
+}

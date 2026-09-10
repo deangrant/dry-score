@@ -5,121 +5,189 @@ use syn::{BinOp, UnOp};
 /// Stable label for a binary operator.
 #[must_use]
 pub const fn bin_op_label(op: &BinOp) -> &'static str {
+    let step1 = or_label(bin_arith_label(op), bin_logic_label(op));
+    let step2 = or_label(step1, bin_bit_label(op));
+    let step3 = or_label(step2, bin_cmp_label(op));
+    label_or_other(or_label(step3, bin_assign_label(op)))
+}
+
+const fn label_or_other(label: Option<&'static str>) -> &'static str {
+    match label {
+        Some(label) => label,
+        None => "other",
+    }
+}
+
+const fn or_label(
+    first: Option<&'static str>,
+    second: Option<&'static str>,
+) -> Option<&'static str> {
+    match first {
+        Some(label) => Some(label),
+        None => second,
+    }
+}
+
+const fn bin_arith_label(op: &BinOp) -> Option<&'static str> {
     match op {
-        BinOp::Add(_) => "add",
-        BinOp::Sub(_) => "sub",
-        BinOp::Mul(_) => "mul",
-        BinOp::Div(_) => "div",
-        BinOp::Rem(_) => "rem",
-        BinOp::And(_) => "and",
-        BinOp::Or(_) => "or",
-        BinOp::BitXor(_) => "bitxor",
-        BinOp::BitAnd(_) => "bitand",
-        BinOp::BitOr(_) => "bitor",
-        BinOp::Shl(_) => "shl",
-        BinOp::Shr(_) => "shr",
-        BinOp::Eq(_) => "eq",
-        BinOp::Ne(_) => "ne",
-        BinOp::Lt(_) => "lt",
-        BinOp::Le(_) => "le",
-        BinOp::Gt(_) => "gt",
-        BinOp::Ge(_) => "ge",
-        BinOp::AddAssign(_) => "add_assign",
-        BinOp::SubAssign(_) => "sub_assign",
-        BinOp::MulAssign(_) => "mul_assign",
-        BinOp::DivAssign(_) => "div_assign",
-        BinOp::RemAssign(_) => "rem_assign",
-        BinOp::BitXorAssign(_) => "bitxor_assign",
-        BinOp::BitAndAssign(_) => "bitand_assign",
-        BinOp::BitOrAssign(_) => "bitor_assign",
-        BinOp::ShlAssign(_) => "shl_assign",
-        BinOp::ShrAssign(_) => "shr_assign",
-        _ => "other",
+        BinOp::Add(_) => Some("add"),
+        BinOp::Sub(_) => Some("sub"),
+        BinOp::Mul(_) => Some("mul"),
+        _ => bin_arith_div_rem(op),
+    }
+}
+
+const fn bin_arith_div_rem(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::Div(_) => Some("div"),
+        BinOp::Rem(_) => Some("rem"),
+        _ => None,
+    }
+}
+
+const fn bin_logic_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::And(_) => Some("and"),
+        BinOp::Or(_) => Some("or"),
+        _ => None,
+    }
+}
+
+const fn bin_bit_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::BitXor(_) => Some("bitxor"),
+        BinOp::BitAnd(_) => Some("bitand"),
+        BinOp::BitOr(_) => Some("bitor"),
+        _ => bin_shift_label(op),
+    }
+}
+
+const fn bin_shift_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::Shl(_) => Some("shl"),
+        BinOp::Shr(_) => Some("shr"),
+        _ => None,
+    }
+}
+
+const fn bin_cmp_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::Eq(_) => Some("eq"),
+        BinOp::Ne(_) => Some("ne"),
+        BinOp::Lt(_) => Some("lt"),
+        _ => bin_cmp_ordered(op),
+    }
+}
+
+const fn bin_cmp_ordered(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::Le(_) => Some("le"),
+        BinOp::Gt(_) => Some("gt"),
+        BinOp::Ge(_) => Some("ge"),
+        _ => None,
+    }
+}
+
+const fn bin_assign_label(op: &BinOp) -> Option<&'static str> {
+    or_label(bin_assign_arith_label(op), bin_assign_bit_label(op))
+}
+
+const fn bin_assign_arith_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::AddAssign(_) => Some("add_assign"),
+        BinOp::SubAssign(_) => Some("sub_assign"),
+        BinOp::MulAssign(_) => Some("mul_assign"),
+        _ => bin_assign_div_rem(op),
+    }
+}
+
+const fn bin_assign_div_rem(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::DivAssign(_) => Some("div_assign"),
+        BinOp::RemAssign(_) => Some("rem_assign"),
+        _ => None,
+    }
+}
+
+const fn bin_assign_bit_label(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::BitXorAssign(_) => Some("bitxor_assign"),
+        BinOp::BitAndAssign(_) => Some("bitand_assign"),
+        BinOp::BitOrAssign(_) => Some("bitor_assign"),
+        _ => bin_assign_shift(op),
+    }
+}
+
+const fn bin_assign_shift(op: &BinOp) -> Option<&'static str> {
+    match op {
+        BinOp::ShlAssign(_) => Some("shl_assign"),
+        BinOp::ShrAssign(_) => Some("shr_assign"),
+        _ => None,
     }
 }
 
 /// Stable label for a unary operator.
 #[must_use]
 pub const fn un_op_label(op: &UnOp) -> &'static str {
-    match op {
-        UnOp::Deref(_) => "deref",
-        UnOp::Not(_) => "not",
-        UnOp::Neg(_) => "neg",
-        _ => "other",
+    if matches!(op, UnOp::Deref(_)) {
+        return "deref";
     }
+    if matches!(op, UnOp::Not(_)) {
+        return "not";
+    }
+    "neg"
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::{bin_op_label, label_or_other, un_op_label};
     use syn::parse_quote;
 
-    fn label_bin(expr: syn::Expr) -> &'static str {
-        let syn::Expr::Binary(bin) = expr else {
-            return "not-binary";
-        };
-        bin_op_label(&bin.op)
-    }
-
-    fn label_un(expr: syn::Expr) -> &'static str {
-        let syn::Expr::Unary(unary) = expr else {
-            return "not-unary";
-        };
-        un_op_label(&unary.op)
-    }
-
     #[test]
-    fn arith_and_logic_labels() {
-        assert_eq!(label_bin(parse_quote!(a + b)), "add");
-        assert_eq!(label_bin(parse_quote!(a - b)), "sub");
-        assert_eq!(label_bin(parse_quote!(a * b)), "mul");
-        assert_eq!(label_bin(parse_quote!(a / b)), "div");
-        assert_eq!(label_bin(parse_quote!(a % b)), "rem");
-        assert_eq!(label_bin(parse_quote!(a && b)), "and");
-        assert_eq!(label_bin(parse_quote!(a || b)), "or");
-    }
+    fn labels_cover_common_ops() {
+        let cases: &[(&str, &str)] = &[
+            ("a + b", "add"),
+            ("a - b", "sub"),
+            ("a * b", "mul"),
+            ("a / b", "div"),
+            ("a % b", "rem"),
+            ("a && b", "and"),
+            ("a || b", "or"),
+            ("a ^ b", "bitxor"),
+            ("a & b", "bitand"),
+            ("a | b", "bitor"),
+            ("a << b", "shl"),
+            ("a >> b", "shr"),
+            ("a == b", "eq"),
+            ("a != b", "ne"),
+            ("a < b", "lt"),
+            ("a <= b", "le"),
+            ("a > b", "gt"),
+            ("a >= b", "ge"),
+            ("a += b", "add_assign"),
+            ("a -= b", "sub_assign"),
+            ("a *= b", "mul_assign"),
+            ("a /= b", "div_assign"),
+            ("a %= b", "rem_assign"),
+            ("a ^= b", "bitxor_assign"),
+            ("a &= b", "bitand_assign"),
+            ("a |= b", "bitor_assign"),
+            ("a <<= b", "shl_assign"),
+            ("a >>= b", "shr_assign"),
+        ];
+        for (src, expected) in cases {
+            #[expect(clippy::expect_used, reason = "fixed operator corpus strings")]
+            let expr: syn::ExprBinary = syn::parse_str(src).expect("parse binop");
+            assert_eq!(bin_op_label(&expr.op), *expected, "{src}");
+        }
 
-    #[test]
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "bit/cmp label corpus is intentionally flat assertions"
-    )]
-    fn bit_and_cmp_labels() {
-        assert_eq!(label_bin(parse_quote!(a ^ b)), "bitxor");
-        assert_eq!(label_bin(parse_quote!(a & b)), "bitand");
-        assert_eq!(label_bin(parse_quote!(a | b)), "bitor");
-        assert_eq!(label_bin(parse_quote!(a << b)), "shl");
-        assert_eq!(label_bin(parse_quote!(a >> b)), "shr");
-        assert_eq!(label_bin(parse_quote!(a == b)), "eq");
-        assert_eq!(label_bin(parse_quote!(a != b)), "ne");
-        assert_eq!(label_bin(parse_quote!(a < b)), "lt");
-        assert_eq!(label_bin(parse_quote!(a <= b)), "le");
-        assert_eq!(label_bin(parse_quote!(a > b)), "gt");
-        assert_eq!(label_bin(parse_quote!(a >= b)), "ge");
-    }
-
-    #[test]
-    fn assign_arith_labels() {
-        assert_eq!(label_bin(parse_quote!(a += b)), "add_assign");
-        assert_eq!(label_bin(parse_quote!(a -= b)), "sub_assign");
-        assert_eq!(label_bin(parse_quote!(a *= b)), "mul_assign");
-        assert_eq!(label_bin(parse_quote!(a /= b)), "div_assign");
-        assert_eq!(label_bin(parse_quote!(a %= b)), "rem_assign");
-    }
-
-    #[test]
-    fn assign_bit_labels() {
-        assert_eq!(label_bin(parse_quote!(a ^= b)), "bitxor_assign");
-        assert_eq!(label_bin(parse_quote!(a &= b)), "bitand_assign");
-        assert_eq!(label_bin(parse_quote!(a |= b)), "bitor_assign");
-        assert_eq!(label_bin(parse_quote!(a <<= b)), "shl_assign");
-        assert_eq!(label_bin(parse_quote!(a >>= b)), "shr_assign");
-    }
-
-    #[test]
-    fn unary_labels() {
-        assert_eq!(label_un(parse_quote!(*a)), "deref");
-        assert_eq!(label_un(parse_quote!(!a)), "not");
-        assert_eq!(label_un(parse_quote!(-a)), "neg");
+        let deref: syn::ExprUnary = parse_quote!(*x);
+        assert_eq!(un_op_label(&deref.op), "deref");
+        let not: syn::ExprUnary = parse_quote!(!x);
+        assert_eq!(un_op_label(&not.op), "not");
+        let neg: syn::ExprUnary = parse_quote!(-x);
+        assert_eq!(un_op_label(&neg.op), "neg");
+        assert_eq!(label_or_other(None), "other");
+        assert_eq!(label_or_other(Some("add")), "add");
     }
 }

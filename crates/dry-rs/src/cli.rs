@@ -131,9 +131,27 @@ fn try_apply_configish(
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
 ) -> Option<Result<(), CliError>> {
+    try_apply_config_threshold(arg, args, raw).or_else(|| try_apply_mins(arg, args, raw))
+}
+
+fn try_apply_config_threshold(
+    arg: &str,
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Option<Result<(), CliError>> {
     match arg {
         "--config" => Some(apply_config(args, raw)),
         "--threshold" => Some(apply_threshold(args, raw)),
+        _ => None,
+    }
+}
+
+fn try_apply_mins(
+    arg: &str,
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Option<Result<(), CliError>> {
+    match arg {
         "--min-nodes" => Some(apply_min_nodes(args, raw)),
         "--min-lines" => Some(apply_min_lines(args, raw)),
         _ => None,
@@ -237,20 +255,32 @@ fn finish_args(mut raw: RawFlags) -> Result<CliArgs, CliError> {
 }
 
 const fn overlay_cli_onto_config(raw: &RawFlags, config: &mut Config) {
+    overlay_gate_flags(raw, config);
+    overlay_output_flags(raw, config);
+    overlay_walk_flags(raw, config);
+}
+
+const fn overlay_gate_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(threshold) = raw.threshold {
         config.gate.threshold = threshold;
     }
+    if let Some(fail_on) = raw.fail_on {
+        config.gate.fail_on_findings = fail_on;
+    }
+}
+
+const fn overlay_output_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(format) = raw.format {
         config.output.format = format;
     }
+}
+
+const fn overlay_walk_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(min_nodes) = raw.min_nodes {
         config.walk.min_nodes = min_nodes;
     }
     if let Some(min_lines) = raw.min_lines {
         config.walk.min_lines = min_lines;
-    }
-    if let Some(fail_on) = raw.fail_on {
-        config.gate.fail_on_findings = fail_on;
     }
 }
 

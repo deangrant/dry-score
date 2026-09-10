@@ -46,9 +46,19 @@ fn try_emit_ops(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNo
 }
 
 fn try_emit_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    try_emit_path_lit(expr, placeholders).or_else(|| try_emit_control_atom(expr, placeholders))
+}
+
+fn try_emit_path_lit(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     Some(match expr {
         Expr::Path(path) => emit_path(path, placeholders),
         Expr::Lit(lit) => NormNode::leaf(lit_label(&lit.lit)),
+        _ => return None,
+    })
+}
+
+fn try_emit_control_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    Some(match expr {
         Expr::Return(ret) => emit_return(ret, placeholders),
         Expr::Infer(_) => emit_infer(),
         Expr::Continue(_) => emit_continue(),
@@ -64,17 +74,29 @@ fn try_emit_macro(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<Norm
 }
 
 fn try_emit_wrap(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    try_emit_refish(expr, placeholders)
+        .or_else(|| try_emit_groupish(expr, placeholders))
+        .or_else(|| try_emit_closure(expr, placeholders))
+}
+
+fn try_emit_refish(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     Some(match expr {
         Expr::Reference(reference) => {
             NormNode::branch("ref", vec![emit_expr(&reference.expr, placeholders)])
         }
         Expr::RawAddr(raw) => emit_raw_addr(raw, placeholders),
-        Expr::Paren(paren) => emit_expr(&paren.expr, placeholders),
-        Expr::Group(group) => emit_expr(&group.expr, placeholders),
         Expr::Try(expr_try) => {
             NormNode::branch("try", vec![emit_expr(&expr_try.expr, placeholders)])
         }
-        _ => return try_emit_closure(expr, placeholders),
+        _ => return None,
+    })
+}
+
+fn try_emit_groupish(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    Some(match expr {
+        Expr::Paren(paren) => emit_expr(&paren.expr, placeholders),
+        Expr::Group(group) => emit_expr(&group.expr, placeholders),
+        _ => return None,
     })
 }
 
@@ -114,10 +136,20 @@ fn try_emit_index(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<Norm
 }
 
 fn try_emit_aggregate(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    try_emit_collection(expr, placeholders).or_else(|| try_emit_struct_range(expr, placeholders))
+}
+
+fn try_emit_collection(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     Some(match expr {
         Expr::Tuple(tuple) => emit_list("tuple", &tuple.elems, placeholders),
         Expr::Array(array) => emit_list("array", &array.elems, placeholders),
         Expr::Repeat(repeat) => emit_repeat(repeat, placeholders),
+        _ => return None,
+    })
+}
+
+fn try_emit_struct_range(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    Some(match expr {
         Expr::Struct(expr_struct) => emit_struct(expr_struct, placeholders),
         Expr::Range(range) => emit_range(range, placeholders),
         _ => return None,
@@ -133,9 +165,19 @@ fn try_emit_branch(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<Nor
 }
 
 fn try_emit_block_expr(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    try_emit_plain_block(expr, placeholders).or_else(|| try_emit_special_block(expr, placeholders))
+}
+
+fn try_emit_plain_block(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     match expr {
         Expr::Block(expr_block) => Some(super::emit_block(&expr_block.block, placeholders)),
         Expr::Unsafe(expr_unsafe) => Some(emit_unsafe(expr_unsafe, placeholders)),
+        _ => None,
+    }
+}
+
+fn try_emit_special_block(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    match expr {
         Expr::TryBlock(try_block) => Some(emit_try_block(try_block, placeholders)),
         Expr::Const(expr_const) => Some(emit_const_block(expr_const, placeholders)),
         _ => None,
@@ -166,9 +208,19 @@ fn try_emit_asyncish(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<N
 }
 
 fn try_emit_misc(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    try_emit_break_cast(expr, placeholders).or_else(|| try_emit_let_yield(expr, placeholders))
+}
+
+fn try_emit_break_cast(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     Some(match expr {
         Expr::Break(expr_break) => emit_break(expr_break, placeholders),
         Expr::Cast(cast) => emit_cast(cast, placeholders),
+        _ => return None,
+    })
+}
+
+fn try_emit_let_yield(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    Some(match expr {
         Expr::Let(expr_let) => emit_let(expr_let, placeholders),
         Expr::Yield(expr_yield) => emit_yield(expr_yield, placeholders),
         _ => return None,
