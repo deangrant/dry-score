@@ -80,7 +80,7 @@ pub struct WalkConfig {
     /// Extensions without leading dots.
     #[serde(default = "default_extensions")]
     pub extensions: Vec<String>,
-    /// Path substrings that cause a file or directory to be skipped.
+    /// Path component names that cause a file or directory to be skipped.
     #[serde(default = "default_excludes")]
     pub exclude: Vec<String>,
     /// Minimum structural nodes for a form.
@@ -111,6 +111,7 @@ fn default_excludes() -> Vec<String> {
         "target".to_owned(),
         ".git".to_owned(),
         "fixtures".to_owned(),
+        "tests".to_owned(),
     ]
 }
 
@@ -217,6 +218,19 @@ mod tests {
     #[test]
     fn default_threshold_is_review_floor() {
         assert!((Config::default().gate.threshold - 0.85).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn default_excludes_match_example() {
+        assert_eq!(
+            WalkConfig::default().exclude,
+            vec![
+                "target".to_owned(),
+                ".git".to_owned(),
+                "fixtures".to_owned(),
+                "tests".to_owned(),
+            ]
+        );
     }
 
     #[test]

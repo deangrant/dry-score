@@ -20,13 +20,18 @@ Options:
 | `--format text\|json\|both` | Human summary, JSON envelope, or both |
 | `--config PATH` | Load knobs from a TOML file |
 | `--min-nodes N` | Drop forms smaller than N structural nodes |
+| `--min-lines N` | Drop forms spanning fewer than N source lines |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--json-out PATH` | When `--format both`, write JSON to this path |
 
 Walk-up discovery loads `dry.toml` from the current directory or a parent.
 See [`dry.example.toml`](dry.example.toml) for the full schema.
 
-Exit codes: `0` success, `1` findings (only with fail-on), `2` usage/config error.
+Analysis roots are treated as trusted local trees; the walker does not follow
+symlinks.
+
+Exit codes: `0` success (including `--help`), `1` findings (only with fail-on),
+`2` usage/config error.
 
 ## Architecture
 
@@ -46,7 +51,8 @@ Pipeline: discover files → parse/normalize → fingerprint index → match →
 
 - Comments and whitespace are discarded by the parser.
 - Identifiers become positional placeholders so renamed twins share fingerprints.
-- Raw identifier spellings are retained in an `ident_trace` for Type-1 vs Type-2.
+- Raw identifier spellings are retained in an `ident_trace` (occurrence
+  sequence, not a unique set) for Type-1 vs Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control-flow and operators keep structural labels.
 - Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.

@@ -28,6 +28,7 @@ pub fn run(args: &CliArgs) -> Result<ExitCode, CliError> {
     let result = analyze(&args.paths, &args.config, &normalizer).map_err(|message| CliError {
         message,
         exit: ExitCode::from(2),
+        print_stdout: false,
     })?;
     emit_report(
         &result.report,
@@ -86,6 +87,7 @@ fn emit_both(report: &Report, json_out: Option<&Path>) -> Result<(), CliError> {
         fs::write(path, json).map_err(|err| CliError {
             message: format!("failed to write {}: {err}", path.display()),
             exit: ExitCode::from(2),
+            print_stdout: false,
         })?;
     } else {
         print_err(&json);

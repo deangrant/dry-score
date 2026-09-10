@@ -7,12 +7,16 @@ use std::collections::HashMap;
 pub struct PlaceholderMap {
     by_name: HashMap<String, u32>,
     next: u32,
-    /// Ordered raw identifiers in first-seen order of occurrence.
+    /// Raw identifier spellings in [`Self::placeholder`] call order; repeats included.
+    ///
+    /// Distinct from first-seen allocation of `idN` labels in `by_name`.
     pub ident_trace: Vec<String>,
 }
 
 impl PlaceholderMap {
     /// Returns the placeholder label for `ident`, allocating if needed.
+    ///
+    /// Each call appends the raw spelling to [`Self::ident_trace`].
     pub fn placeholder(&mut self, ident: &str) -> String {
         self.ident_trace.push(ident.to_owned());
         let idx = if let Some(existing) = self.by_name.get(ident) {

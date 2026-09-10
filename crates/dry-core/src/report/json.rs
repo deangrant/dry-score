@@ -13,7 +13,7 @@ fn serialize_report(report: &Report) -> Result<String, String> {
 }
 
 fn fallback_json(result: Result<String, String>) -> String {
-    result.unwrap_or_else(|message| format!(r#"{{"error":"{message}"}}"#))
+    result.unwrap_or_else(|message| serde_json::json!({ "error": message }).to_string())
 }
 
 #[cfg(test)]
@@ -24,5 +24,15 @@ mod tests {
     fn fallback_json_covers_error_arm() {
         let json = fallback_json(Err("boom".to_owned()));
         assert!(json.contains("boom"));
+    }
+
+    #[test]
+    fn fallback_json_escapes_special_characters() {
+        let message = "say \"hi\" \\ and\nnewline";
+        let json = fallback_json(Err(message.to_owned()));
+        #[expect(clippy::expect_used, reason = "test asserts valid JSON")]
+        let parsed: serde_json::Value =
+            serde_json::from_str(&json).expect("fallback must be valid JSON");
+        assert_eq!(parsed["error"], message);
     }
 }

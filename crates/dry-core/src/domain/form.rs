@@ -24,7 +24,7 @@ pub struct NormalizedForm {
     pub node_count: u32,
     /// Structural fingerprint set (subtree hashes).
     pub fingerprints: BTreeSet<u64>,
-    /// Ordered raw identifiers encountered during normalization.
+    /// Raw identifier spellings in normalization visit order; repeats included.
     pub ident_trace: Vec<String>,
 }
 

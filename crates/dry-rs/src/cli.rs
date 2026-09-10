@@ -24,6 +24,8 @@ pub struct CliError {
     pub message: String,
     /// Suggested process exit code.
     pub exit: ExitCode,
+    /// When true, callers should print [`Self::message`] to stdout.
+    pub print_stdout: bool,
 }
 
 impl CliError {
@@ -33,6 +35,17 @@ impl CliError {
         Self {
             message: message.into(),
             exit: ExitCode::from(2),
+            print_stdout: false,
+        }
+    }
+
+    /// Builds a help response with exit code 0 (print to stdout).
+    #[must_use]
+    pub fn help(message: impl Into<String>) -> Self {
+        Self {
+            message: message.into(),
+            exit: ExitCode::SUCCESS,
+            print_stdout: true,
         }
     }
 }
@@ -67,6 +80,7 @@ struct RawFlags {
     threshold: Option<f64>,
     format: Option<OutputFormat>,
     min_nodes: Option<u32>,
+    min_lines: Option<u32>,
     fail_on: Option<bool>,
     json_out: Option<PathBuf>,
 }
@@ -89,7 +103,7 @@ fn try_flag_arg(
     raw: &mut RawFlags,
 ) -> Option<Result<(), CliError>> {
     if arg == "--help" || arg == "-h" {
-        return Some(Err(CliError::usage(help_text())));
+        return Some(Err(CliError::help(help_text())));
     }
     try_apply_valued(arg, args, raw)
         .or_else(|| try_apply_switch(arg, raw))
@@ -121,6 +135,7 @@ fn try_apply_configish(
         "--config" => Some(apply_config(args, raw)),
         "--threshold" => Some(apply_threshold(args, raw)),
         "--min-nodes" => Some(apply_min_nodes(args, raw)),
+        "--min-lines" => Some(apply_min_lines(args, raw)),
         _ => None,
     }
 }
@@ -188,6 +203,17 @@ fn apply_min_nodes(
     Ok(())
 }
 
+fn apply_min_lines(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    raw.min_lines = Some(parse_value(
+        &require_value(args, "--min-lines")?,
+        "integer",
+    )?);
+    Ok(())
+}
+
 fn apply_json_out(
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
@@ -220,6 +246,9 @@ const fn overlay_cli_onto_config(raw: &RawFlags, config: &mut Config) {
     if let Some(min_nodes) = raw.min_nodes {
         config.walk.min_nodes = min_nodes;
     }
+    if let Some(min_lines) = raw.min_lines {
+        config.walk.min_lines = min_lines;
+    }
     if let Some(fail_on) = raw.fail_on {
         config.gate.fail_on_findings = fail_on;
     }
@@ -250,6 +279,7 @@ fn help_text() -> String {
      --threshold FLOAT\n\
      --format text|json|both\n\
      --min-nodes N\n\
+     --min-lines N\n\
      --fail-on-findings\n\
      --no-fail-on-findings\n\
      --json-out PATH\n\
@@ -287,6 +317,8 @@ mod tests {
             "--no-fail-on-findings",
             "--min-nodes",
             "12",
+            "--min-lines",
+            "5",
             "--json-out",
             "out.json",
         ]));
@@ -295,17 +327,34 @@ mod tests {
         let parsed = parsed.expect("ok");
         assert!(!parsed.config.gate.fail_on_findings);
         assert_eq!(parsed.config.walk.min_nodes, 12);
+        assert_eq!(parsed.config.walk.min_lines, 5);
         assert_eq!(parsed.json_out.as_deref(), Some(Path::new("out.json")));
     }
 
     #[test]
     fn parse_errors() {
-        assert!(parse_args(args(&["--help"])).is_err());
-        assert!(parse_args(args(&["-h"])).is_err());
         assert!(parse_args(args(&["--unknown"])).is_err());
         assert!(parse_args(args(&["--threshold"])).is_err());
         assert!(parse_args(args(&["--format", "nope"])).is_err());
         assert!(parse_args(args(&["--min-nodes", "x"])).is_err());
+    }
+
+    #[test]
+    fn help_exits_success_via_stdout() {
+        for flag in ["--help", "-h"] {
+            let err = parse_args(args(&[flag]));
+            assert!(err.is_err());
+            #[expect(clippy::expect_used, reason = "test")]
+            let err = err.expect_err("help");
+            assert!(err.print_stdout);
+            assert!(err.message.contains("--threshold"));
+        }
+    }
+
+    #[test]
+    fn min_lines_parse_errors() {
+        assert!(parse_args(args(&["--min-lines"])).is_err());
+        assert!(parse_args(args(&["--min-lines", "x"])).is_err());
     }
 
     #[test]

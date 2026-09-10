@@ -4,7 +4,8 @@
 //! - Comments and whitespace are discarded by the parser.
 //! - Identifiers become positional placeholders (`id0`, `id1`, …) in visit order,
 //!   so renamed twins share fingerprints.
-//! - Raw identifier spellings are kept in `ident_trace` for Type-1 vs Type-2.
+//! - Raw identifier spellings are kept in `ident_trace` (occurrence sequence,
+//!   not a unique set) for Type-1 vs Type-2.
 //! - Literals become kind tags (`lit_int`, `lit_str`, …).
 //! - Control-flow and operator nodes keep their structural labels.
 //! - Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.
@@ -95,7 +96,7 @@ pub struct FormParts {
     pub node_count: u32,
     /// Fingerprint set.
     pub fingerprints: std::collections::BTreeSet<u64>,
-    /// Raw identifier trace.
+    /// Raw identifier occurrence sequence (repeats included).
     pub ident_trace: Vec<String>,
 }
 

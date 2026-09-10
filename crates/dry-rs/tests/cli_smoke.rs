@@ -12,7 +12,9 @@ fn binary_help_and_analyze() {
     assert!(help.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let help = help.expect("run");
-    assert!(!help.status.success());
+    assert!(help.status.success());
+    let stdout = String::from_utf8_lossy(&help.stdout);
+    assert!(stdout.contains("--threshold"));
 
     let fixture =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/non_clone");

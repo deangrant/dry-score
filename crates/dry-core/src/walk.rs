@@ -1,4 +1,7 @@
 //! Filesystem discovery of source files.
+//!
+//! Symlink entries (file or directory) are not followed, so discovery stays on
+//! the lexical tree under each analysis root.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -52,6 +55,9 @@ impl std::error::Error for WalkError {}
 /// that itself lives under an excluded name (e.g. a `fixtures/` corpus) is
 /// still analyzed when passed as an explicit root.
 ///
+/// Symlinks are not followed (neither files nor directories), which keeps the
+/// walk inside the lexical tree and avoids symlink cycles.
+///
 /// # Errors
 ///
 /// Returns [`WalkError`] when a root cannot be read.
@@ -77,7 +83,7 @@ fn collect_into(
     if is_excluded_relative(path, root, &options.exclude) {
         return Ok(());
     }
-    let meta = fs::metadata(path)
+    let meta = fs::symlink_metadata(path)
         .map_err(|err| WalkError::new(format!("failed to stat {}: {err}", path.display())))?;
     collect_meta(path, root, options, &meta, out)
 }
@@ -89,6 +95,9 @@ fn collect_meta(
     meta: &fs::Metadata,
     out: &mut Vec<PathBuf>,
 ) -> Result<(), WalkError> {
+    if meta.file_type().is_symlink() {
+        return Ok(());
+    }
     if meta.is_file() {
         collect_file(path, options, out);
         return Ok(());
@@ -236,6 +245,52 @@ mod tests {
         let base = temp_project();
         let sock = base.join("s.sock");
         let _listener = UnixListener::bind(&sock);
+        let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
+        assert_walk_len(&base, &options, 2);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_skips_directory_symlink_escape() {
+        use std::os::unix::fs::symlink;
+        let base = temp_project();
+        let outside = std::env::temp_dir().join(format!(
+            "dry-rs-walk-outside-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+        ));
+        assert!(fs::create_dir_all(&outside).is_ok());
+        assert!(fs::write(outside.join("secret.rs"), "fn leak() {}\n").is_ok());
+        assert!(symlink(&outside, base.join("out")).is_ok());
+        let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
+        assert_walk_len(&base, &options, 2);
+        let _ = fs::remove_dir_all(outside);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_skips_file_symlink() {
+        use std::os::unix::fs::symlink;
+        let base = temp_project();
+        let outside = std::env::temp_dir().join(format!(
+            "dry-rs-walk-file-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+        ));
+        assert!(fs::write(&outside, "fn leak() {}\n").is_ok());
+        assert!(symlink(&outside, base.join("src/link.rs")).is_ok());
+        let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
+        assert_walk_len(&base, &options, 2);
+        let _ = fs::remove_file(outside);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_skips_symlink_cycle() {
+        use std::os::unix::fs::symlink;
+        let base = temp_project();
+        assert!(symlink(".", base.join("loop")).is_ok());
         let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
         assert_walk_len(&base, &options, 2);
         let _ = fs::remove_dir_all(base);
