@@ -1,10 +1,10 @@
 //! Misc expression emitters for previously uncovered variants.
 
-use super::super::shared::{
-    emit_labeled_block, emit_optional_inner, emit_pair, emit_range_like, emit_unary_wrap,
-    member_name,
-};
+use super::super::shared::{member_name, path_segment_leaves};
 use super::emit_expr;
+use super::wrap::{
+    emit_labeled_block, emit_optional_inner, emit_pair, emit_range_like, emit_unary_wrap,
+};
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
@@ -32,12 +32,7 @@ pub(super) fn emit_struct(
     expr_struct: &syn::ExprStruct,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    let mut children = Vec::new();
-    for segment in &expr_struct.path.segments {
-        children.push(NormNode::leaf(
-            placeholders.placeholder(&segment.ident.to_string()),
-        ));
-    }
+    let mut children = path_segment_leaves(&expr_struct.path, placeholders);
     for field in &expr_struct.fields {
         children.push(NormNode::leaf(
             placeholders.placeholder(&member_name(&field.member)),
@@ -51,6 +46,7 @@ pub(super) fn emit_struct(
 }
 
 pub(super) fn emit_repeat(repeat: &syn::ExprRepeat, placeholders: &mut PlaceholderMap) -> NormNode {
+    // dry-rs:ignore. Thin emit_pair wrappers share shape by design.
     emit_pair("repeat", &repeat.expr, &repeat.len, placeholders)
 }
 

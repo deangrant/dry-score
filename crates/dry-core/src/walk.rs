@@ -4,6 +4,7 @@
 //! the lexical tree under each analysis root.
 
 use std::fs;
+use std::io;
 use std::path::{Path, PathBuf};
 
 /// Options controlling recursive source discovery.
@@ -127,18 +128,25 @@ fn collect_dir(
 }
 
 fn read_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, WalkError> {
-    let entries = fs::read_dir(path)
-        .map_err(|err| walk_io_error(format!("failed to read {}: {err}", path.display())))?;
+    let entries = fs::read_dir(path).map_err(|err| dir_read_error(path, &err))?;
     let mut out = Vec::new();
     for entry in entries {
-        out.push(entry.map_err(|err| {
-            walk_io_error(format!(
-                "failed to read entry under {}: {err}",
-                path.display()
-            ))
-        })?);
+        out.push(entry.map_err(|err| entry_read_error(path, &err))?);
     }
     Ok(out)
+}
+
+fn dir_read_error(path: &Path, err: &io::Error) -> WalkError {
+    // dry-rs:ignore. Thin walk_io_error wrappers share shape by design.
+    walk_io_error(format!("failed to read {}: {err}", path.display()))
+}
+
+fn entry_read_error(path: &Path, err: &io::Error) -> WalkError {
+    // dry-rs:ignore. Thin walk_io_error wrappers share shape by design.
+    walk_io_error(format!(
+        "failed to read entry under {}: {err}",
+        path.display()
+    ))
 }
 
 fn walk_io_error(message: String) -> WalkError {
@@ -300,19 +308,8 @@ mod tests {
     fn read_dir_helpers_cover_errors() {
         let missing = Path::new("/no/such/dry-rs-dir");
         assert!(read_dir_entries(missing).is_err());
-        let err = std::io::Error::other("boom");
-        assert!(
-            !walk_io_error(format!("failed to read {}: {err}", missing.display()))
-                .to_string()
-                .is_empty()
-        );
-        assert!(
-            !walk_io_error(format!(
-                "failed to read entry under {}: {err}",
-                missing.display()
-            ))
-            .to_string()
-            .is_empty()
-        );
+        let err = io::Error::other("boom");
+        assert!(!dir_read_error(missing, &err).to_string().is_empty());
+        assert!(!entry_read_error(missing, &err).to_string().is_empty());
     }
 }

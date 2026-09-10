@@ -1,11 +1,12 @@
 //! Pattern emission for structural fingerprints.
 
-use syn::{Pat, Path};
+use syn::Pat;
 
 use super::emit_block;
+use super::expr::emit_range_like;
 use super::lit_label;
 use super::mac::emit_macro;
-use super::shared::{emit_range_like, member_name};
+use super::shared::{emit_path_segments, member_name, path_segment_leaves};
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
@@ -130,29 +131,12 @@ fn emit_path_pat(path: &syn::ExprPath, placeholders: &mut PlaceholderMap) -> Nor
     emit_path_segments(&path.path, placeholders)
 }
 
-fn emit_path_segments(path: &Path, placeholders: &mut PlaceholderMap) -> NormNode {
-    if let Some(ident) = path.get_ident() {
-        return NormNode::leaf(placeholders.placeholder(&ident.to_string()));
-    }
-    emit_multi_segment_path(path, placeholders)
-}
-
-fn emit_multi_segment_path(path: &Path, placeholders: &mut PlaceholderMap) -> NormNode {
-    let label = path
-        .segments
-        .iter()
-        .map(|seg| placeholders.placeholder(&seg.ident.to_string()))
-        .collect::<Vec<_>>()
-        .join("::");
-    NormNode::leaf(format!("path:{label}"))
-}
-
 fn emit_range_pat(range: &syn::ExprRange, placeholders: &mut PlaceholderMap) -> NormNode {
     emit_range_like(range, "pat_range", "pat_range_inclusive", placeholders)
 }
 
 fn emit_struct_pat(strct: &syn::PatStruct, placeholders: &mut PlaceholderMap) -> NormNode {
-    let mut children = path_segment_nodes(&strct.path, placeholders);
+    let mut children = path_segment_leaves(&strct.path, placeholders);
     for field in &strct.fields {
         children.push(NormNode::leaf(
             placeholders.placeholder(&member_name(&field.member)),
@@ -169,16 +153,9 @@ fn emit_tuple_struct_pat(
     tuple_struct: &syn::PatTupleStruct,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    let mut children = path_segment_nodes(&tuple_struct.path, placeholders);
+    let mut children = path_segment_leaves(&tuple_struct.path, placeholders);
     children.extend(tuple_struct.elems.iter().map(|elem| emit_pat(elem, placeholders)));
     NormNode::branch("pat_tuple_struct", children)
-}
-
-fn path_segment_nodes(path: &Path, placeholders: &mut PlaceholderMap) -> Vec<NormNode> {
-    path.segments
-        .iter()
-        .map(|seg| NormNode::leaf(placeholders.placeholder(&seg.ident.to_string())))
-        .collect()
 }
 
 #[cfg(test)]

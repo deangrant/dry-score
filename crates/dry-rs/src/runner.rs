@@ -126,11 +126,16 @@ mod tests {
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir().join(format!("dry-rs-runner-{stamp}"));
         assert!(fs::create_dir_all(base.join("src")).is_ok());
-        assert!(fs::write(
-            base.join("src/lib.rs"),
-            "fn one() {\n    let a = 1;\n    let b = a + 1;\n    let c = b + 1;\n}\nfn two() {\n    let a = 1;\n    let b = a + 1;\n    let c = b + 1;\n}\n",
-        )
-        .is_ok());
+        assert!(
+            fs::write(
+                base.join("src/lib.rs"),
+                concat!(
+                    "fn one() {\n    let a = 1;\n    let b = a + 1;\n    let c = b + 1;\n}\n",
+                    "fn two() {\n    let a = 1;\n    let b = a + 1;\n    let c = b + 1;\n}\n",
+                ),
+            )
+            .is_ok()
+        );
         base
     }
 

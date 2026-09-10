@@ -3,6 +3,7 @@
 mod control;
 mod misc;
 mod primary;
+mod wrap;
 
 use syn::Expr;
 
@@ -22,6 +23,8 @@ use primary::{
     emit_binary, emit_call, emit_closure, emit_field, emit_list, emit_method_call, emit_path,
     emit_return, emit_unary,
 };
+
+pub(super) use wrap::emit_range_like;
 
 /// Emits a normalized tree for an expression.
 pub fn emit_expr(expr: &Expr, placeholders: &mut PlaceholderMap) -> NormNode {

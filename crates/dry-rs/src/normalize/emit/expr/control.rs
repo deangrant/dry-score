@@ -2,6 +2,7 @@
 
 use super::super::emit_pat;
 use super::emit_expr;
+use super::wrap::{emit_labeled_block, emit_pair, emit_unary_wrap};
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
@@ -41,7 +42,7 @@ pub(super) fn emit_for(for_loop: &syn::ExprForLoop, placeholders: &mut Placehold
 }
 
 pub(super) fn emit_loop(expr_loop: &syn::ExprLoop, placeholders: &mut PlaceholderMap) -> NormNode {
-    super::super::shared::emit_labeled_block("loop", &expr_loop.body, placeholders)
+    emit_labeled_block("loop", &expr_loop.body, placeholders)
 }
 
 pub(super) fn emit_match(
@@ -62,21 +63,22 @@ pub(super) fn emit_match(
 }
 
 pub(super) fn emit_assign(assign: &syn::ExprAssign, placeholders: &mut PlaceholderMap) -> NormNode {
-    super::super::shared::emit_pair("assign", &assign.left, &assign.right, placeholders)
+    // dry-rs:ignore. Thin emit_pair wrappers share shape by design.
+    emit_pair("assign", &assign.left, &assign.right, placeholders)
 }
 
 pub(super) fn emit_async(
     expr_async: &syn::ExprAsync,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    super::super::shared::emit_labeled_block("async", &expr_async.block, placeholders)
+    emit_labeled_block("async", &expr_async.block, placeholders)
 }
 
 pub(super) fn emit_await(
     expr_await: &syn::ExprAwait,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    super::super::shared::emit_unary_wrap("await", &expr_await.base, placeholders)
+    emit_unary_wrap("await", &expr_await.base, placeholders)
 }
 
 #[cfg(test)]

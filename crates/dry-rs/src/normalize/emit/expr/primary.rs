@@ -2,7 +2,9 @@
 
 use super::super::emit_pat;
 use super::super::ops::{bin_op_label, un_op_label};
+use super::super::shared::{emit_path_segments, member_name};
 use super::emit_expr;
+use super::wrap::emit_optional_inner;
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
@@ -25,7 +27,7 @@ pub(super) fn emit_unary(unary: &syn::ExprUnary, placeholders: &mut PlaceholderM
 
 pub(super) fn emit_return(ret: &syn::ExprReturn, placeholders: &mut PlaceholderMap) -> NormNode {
     // dry-rs:ignore. Thin optional-inner wrappers share shape by design.
-    super::super::shared::emit_optional_inner("return", ret.expr.as_deref(), placeholders)
+    emit_optional_inner("return", ret.expr.as_deref(), placeholders)
 }
 
 pub(super) fn emit_list(
@@ -38,17 +40,7 @@ pub(super) fn emit_list(
 }
 
 pub(super) fn emit_path(path: &syn::ExprPath, placeholders: &mut PlaceholderMap) -> NormNode {
-    if let Some(ident) = path.path.get_ident() {
-        return NormNode::leaf(placeholders.placeholder(&ident.to_string()));
-    }
-    let label = path
-        .path
-        .segments
-        .iter()
-        .map(|seg| placeholders.placeholder(&seg.ident.to_string()))
-        .collect::<Vec<_>>()
-        .join("::");
-    NormNode::leaf(format!("path:{label}"))
+    emit_path_segments(&path.path, placeholders)
 }
 
 pub(super) fn emit_call(call: &syn::ExprCall, placeholders: &mut PlaceholderMap) -> NormNode {
@@ -84,9 +76,7 @@ pub(super) fn emit_field(field: &syn::ExprField, placeholders: &mut PlaceholderM
         "field",
         vec![
             emit_expr(&field.base, placeholders),
-            NormNode::leaf(
-                placeholders.placeholder(&super::super::shared::member_name(&field.member)),
-            ),
+            NormNode::leaf(placeholders.placeholder(&member_name(&field.member))),
         ],
     )
 }
