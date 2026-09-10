@@ -49,7 +49,7 @@ Pipeline: discover files → parse/normalize → fingerprint index → match →
 - Raw identifier spellings are retained in an `ident_trace` for Type-1 vs Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control-flow and operators keep structural labels.
-- Each subtree hashes to a `u64`; the set of subtree hashes is the fingerprint.
+- Each subtree hashes to a `u64` via fixed FNV-1a; the set of those hashes is the fingerprint.
 
 **Matching:**
 

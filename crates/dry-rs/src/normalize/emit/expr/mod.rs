@@ -1,16 +1,20 @@
 //! Expression emission helpers.
 
 mod control;
+mod misc;
 mod primary;
 
 use syn::Expr;
-use syn::spanned::Spanned;
 
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
 use control::{
     emit_assign, emit_async, emit_await, emit_for, emit_if, emit_loop, emit_match, emit_while,
+};
+use misc::{
+    emit_break, emit_cast, emit_const_block, emit_continue, emit_infer, emit_let, emit_range,
+    emit_raw_addr, emit_repeat, emit_struct, emit_try_block, emit_unsafe, emit_yield,
 };
 use primary::{
     emit_binary, emit_call, emit_closure, emit_field, emit_list, emit_method_call, emit_path,
@@ -27,7 +31,8 @@ pub fn emit_expr(expr: &Expr, placeholders: &mut PlaceholderMap) -> NormNode {
         .or_else(|| try_emit_branch(expr, placeholders))
         .or_else(|| try_emit_loopish(expr, placeholders))
         .or_else(|| try_emit_asyncish(expr, placeholders))
-        .unwrap_or_else(|| NormNode::leaf(format!("expr:{}", expr.span().start().line)))
+        .or_else(|| try_emit_misc(expr, placeholders))
+        .unwrap_or_else(|| NormNode::leaf("expr_other"))
 }
 
 fn try_emit_ops(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
@@ -44,6 +49,8 @@ fn try_emit_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormN
         Expr::Path(path) => emit_path(path, placeholders),
         Expr::Lit(lit) => NormNode::leaf(lit_label(&lit.lit)),
         Expr::Return(ret) => emit_return(ret, placeholders),
+        Expr::Infer(_) => emit_infer(),
+        Expr::Continue(_) => emit_continue(),
         _ => return try_emit_macro(expr),
     })
 }
@@ -60,7 +67,9 @@ fn try_emit_wrap(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormN
         Expr::Reference(reference) => {
             NormNode::branch("ref", vec![emit_expr(&reference.expr, placeholders)])
         }
+        Expr::RawAddr(raw) => emit_raw_addr(raw, placeholders),
         Expr::Paren(paren) => emit_expr(&paren.expr, placeholders),
+        Expr::Group(group) => emit_expr(&group.expr, placeholders),
         Expr::Try(expr_try) => {
             NormNode::branch("try", vec![emit_expr(&expr_try.expr, placeholders)])
         }
@@ -107,6 +116,9 @@ fn try_emit_aggregate(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<
     Some(match expr {
         Expr::Tuple(tuple) => emit_list("tuple", &tuple.elems, placeholders),
         Expr::Array(array) => emit_list("array", &array.elems, placeholders),
+        Expr::Repeat(repeat) => emit_repeat(repeat, placeholders),
+        Expr::Struct(expr_struct) => emit_struct(expr_struct, placeholders),
+        Expr::Range(range) => emit_range(range, placeholders),
         _ => return None,
     })
 }
@@ -122,6 +134,9 @@ fn try_emit_branch(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<Nor
 fn try_emit_block_expr(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     match expr {
         Expr::Block(expr_block) => Some(super::emit_block(&expr_block.block, placeholders)),
+        Expr::Unsafe(expr_unsafe) => Some(emit_unsafe(expr_unsafe, placeholders)),
+        Expr::TryBlock(try_block) => Some(emit_try_block(try_block, placeholders)),
+        Expr::Const(expr_const) => Some(emit_const_block(expr_const, placeholders)),
         _ => None,
     }
 }
@@ -149,16 +164,24 @@ fn try_emit_asyncish(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<N
     })
 }
 
+fn try_emit_misc(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    Some(match expr {
+        Expr::Break(expr_break) => emit_break(expr_break, placeholders),
+        Expr::Cast(cast) => emit_cast(cast, placeholders),
+        Expr::Let(expr_let) => emit_let(expr_let, placeholders),
+        Expr::Yield(expr_yield) => emit_yield(expr_yield, placeholders),
+        _ => return None,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::normalize::placeholders::PlaceholderMap;
     use syn::parse_quote;
 
-    #[test]
-    fn emit_expr_covers_families() {
-        let mut p = PlaceholderMap::default();
-        let samples: Vec<syn::Expr> = vec![
+    fn sample_exprs() -> Vec<syn::Expr> {
+        vec![
             parse_quote!(a + b),
             parse_quote!(x),
             parse_quote!(f(1)),
@@ -194,9 +217,43 @@ mod tests {
                 let x = 1;
                 x
             }),
-        ];
-        for sample in samples {
-            let _ = emit_expr(&sample, &mut p);
+            parse_quote!(break),
+            parse_quote!(continue),
+            parse_quote!(x as u32),
+            parse_quote!(1..n),
+            parse_quote!(Point { x: 1 }),
+            parse_quote!([0; 3]),
+            parse_quote!(unsafe { 1 }),
+            parse_quote!(const { 1 }),
+            parse_quote!(&raw const x),
+        ]
+    }
+
+    #[test]
+    fn emit_expr_covers_families() {
+        let mut placeholders = PlaceholderMap::default();
+        for sample in sample_exprs() {
+            let node = emit_expr(&sample, &mut placeholders);
+            assert_ne!(node.label, "expr_other");
+            assert!(!node.label.starts_with("expr:"));
         }
+    }
+
+    #[test]
+    fn expr_other_fallback_is_stable() {
+        let verbatim = Expr::Verbatim(proc_macro2::TokenStream::new());
+        let mut p = PlaceholderMap::default();
+        assert_eq!(emit_expr(&verbatim, &mut p).label, "expr_other");
+    }
+
+    #[test]
+    fn let_in_if_condition_emits_let() {
+        let mut p = PlaceholderMap::default();
+        let expr: syn::Expr = parse_quote!(if let Some(x) = y {
+            x
+        });
+        let node = emit_expr(&expr, &mut p);
+        assert_eq!(node.label, "if");
+        assert_eq!(node.children[0].label, "let");
     }
 }

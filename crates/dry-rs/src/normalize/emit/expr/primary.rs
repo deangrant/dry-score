@@ -110,52 +110,18 @@ fn field_member_name(member: &syn::Member) -> String {
     }
 }
 
-pub(super) fn lit_label(lit: &Lit) -> String {
-    lit_label_debug(&format!("{lit:?}"))
-}
-
-fn lit_label_debug(debug: &str) -> String {
-    let debug = debug.strip_prefix("Lit::").unwrap_or(debug);
-    text_lit_label(debug)
-        .or_else(|| numeric_lit_label(debug))
-        .unwrap_or_else(|| "lit_other".to_owned())
-}
-
-fn text_lit_label(debug: &str) -> Option<String> {
-    if debug.starts_with("Str") {
-        return Some("lit_str".to_owned());
+pub(super) const fn lit_label(lit: &Lit) -> &'static str {
+    match lit {
+        Lit::Str(_) => "lit_str",
+        Lit::ByteStr(_) => "lit_bytestr",
+        Lit::CStr(_) => "lit_cstr",
+        Lit::Byte(_) => "lit_byte",
+        Lit::Char(_) => "lit_char",
+        Lit::Int(_) => "lit_int",
+        Lit::Float(_) => "lit_float",
+        Lit::Bool(_) => "lit_bool",
+        _ => "lit_other",
     }
-    if debug.starts_with("ByteStr") {
-        return Some("lit_bytestr".to_owned());
-    }
-    if debug.starts_with("Byte") {
-        return Some("lit_byte".to_owned());
-    }
-    if debug.starts_with("Char") {
-        return Some("lit_char".to_owned());
-    }
-    cstr_lit_label(debug)
-}
-
-fn cstr_lit_label(debug: &str) -> Option<String> {
-    if debug.starts_with("CStr") {
-        Some("lit_cstr".to_owned())
-    } else {
-        None
-    }
-}
-
-fn numeric_lit_label(debug: &str) -> Option<String> {
-    if debug.starts_with("Int") {
-        return Some("lit_int".to_owned());
-    }
-    if debug.starts_with("Float") {
-        return Some("lit_float".to_owned());
-    }
-    if debug.starts_with("Bool") {
-        return Some("lit_bool".to_owned());
-    }
-    None
 }
 
 #[cfg(test)]
@@ -178,7 +144,6 @@ mod tests {
         assert_eq!(lit_label(&parse_quote!(1.5)), "lit_float");
         assert_eq!(lit_label(&parse_quote!(true)), "lit_bool");
         assert_eq!(lit_label(&parse_quote!(c"hi")), "lit_cstr");
-        assert_eq!(lit_label_debug("Nope"), "lit_other");
     }
 
     #[test]

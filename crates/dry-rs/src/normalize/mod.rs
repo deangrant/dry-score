@@ -7,7 +7,8 @@
 //! - Raw identifier spellings are kept in `ident_trace` for Type-1 vs Type-2.
 //! - Literals become kind tags (`lit_int`, `lit_str`, …).
 //! - Control-flow and operator nodes keep their structural labels.
-//! - Each subtree hashes to a `u64`; all subtree hashes form the fingerprint set.
+//! - Each subtree hashes to a `u64` via fixed FNV-1a; all subtree hashes form
+//!   the fingerprint set.
 
 mod emit;
 mod extract;
