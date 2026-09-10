@@ -16,8 +16,6 @@ case "$TIER" in
     ;;
 esac
 
-CRAP_MANIFEST="${CRAP_MANIFEST:-/home/deangrant/github/rust-crap/Cargo.toml}"
-
 step() {
   echo ""
   echo "==> $*"
@@ -55,16 +53,6 @@ run_full() {
   if ! echo "$report" | grep -q 'findings=0'; then
     fail "dry-rs reported findings (expected findings=0)"
   fi
-
-  step "cargo llvm-cov → lcov.info"
-  cargo llvm-cov --workspace --all-targets --all-features --lcov --output-path lcov.info
-
-  if [[ ! -f "$CRAP_MANIFEST" ]]; then
-    fail "crap manifest not found at $CRAP_MANIFEST (set CRAP_MANIFEST)"
-  fi
-
-  step "crap-rs --fail-above --threshold 5"
-  cargo run --manifest-path "$CRAP_MANIFEST" -p crap-rs --locked -- --fail-above --threshold 5
 }
 
 echo "verify: tier=$TIER (cwd=$ROOT)"

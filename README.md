@@ -89,14 +89,20 @@ Intentional corpora live under
 
 ## CI
 
-[`.github/workflows/dry-rs.yml`](.github/workflows/dry-rs.yml) builds the
-release binary on every PR/push, analyzes library sources, uploads JSON, and
-writes a text step summary (`fail-on-findings` off until a clean baseline).
+Workflows under [`.github/workflows/`](.github/workflows/):
+
+| Workflow | Gate |
+| --- | --- |
+| [`lint.yml`](.github/workflows/lint.yml) | workspace check, fmt, clippy `-D warnings`, rustdoc `-D warnings`, 500-line cap |
+| [`test.yml`](.github/workflows/test.yml) | `cargo test --workspace --locked` |
+| [`supply-chain.yml`](.github/workflows/supply-chain.yml) | `cargo deny` + `cargo audit` |
+| [`dry-rs.yml`](.github/workflows/dry-rs.yml) | release build; scan `.`; require **findings=0**; JSON artifact + step summary |
+
+Local parity: [`scripts/verify.sh`](scripts/verify.sh) (`lite` / `full`). See [AGENTS.md](AGENTS.md).
 
 ## Workspace tooling
 
-This repo also carries opinionated lint CI, supply-chain checks, and agent
-guidance:
+This repo also carries opinionated lint config and agent guidance:
 
 | Area | Location |
 | --- | --- |
@@ -104,15 +110,13 @@ guidance:
 | Clippy thresholds | [`clippy.toml`](clippy.toml) (cognitive 8, type 200, fn 50 lines) |
 | Toolchain | [`rust-toolchain.toml`](rust-toolchain.toml) (**1.94.0**) |
 | Lint CI | [`.github/workflows/lint.yml`](.github/workflows/lint.yml) |
+| Test CI | [`.github/workflows/test.yml`](.github/workflows/test.yml) |
 | Supply chain | [`.github/workflows/supply-chain.yml`](.github/workflows/supply-chain.yml) |
 | Agent index | [AGENTS.md](AGENTS.md) |
 
 ```bash
-cargo fmt --all
-cargo clippy --workspace --all-targets --all-features -- -D warnings
-cargo deny check
-cargo audit
-cargo test --workspace
+./scripts/verify.sh lite
+./scripts/verify.sh full
 ```
 
 ## License

@@ -32,8 +32,8 @@ gates.
 
 4. Re-scan until the report shows `findings=0`.
 
-5. Confirm CRAP still green via `./scripts/verify.sh full` (or at least the
-   llvm-cov + crap steps). Success = **findings=0 and crap still green**.
+5. Confirm gates via `./scripts/verify.sh full` (or `/verify`). Success =
+   **findings=0** and `full` verify green.
 
 ## Ignore marker format
 

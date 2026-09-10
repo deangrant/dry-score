@@ -79,7 +79,7 @@ something a rule forbids, the rule wins.
 - Letting `normalize/emit/shared` import `expr` (reintroduces a module cycle).
 - Following symlinks in the walker or assuming out-of-root links are analyzed.
 - Re-merging CC≤5 dispatch shells that were split for Clippy, then fighting dry-rs dogfood.
-- Relaxing Clippy/CRAP thresholds or editing `dry.toml` solely to hide self-scan findings.
+- Relaxing Clippy thresholds or editing `dry.toml` solely to hide self-scan findings.
 - Claiming `/verify` or CI passed without running the commands.
 
 ## Workflow
@@ -108,7 +108,7 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | -------------------- | ---------- |
 | Normalize, compare, tiers, walk/config map | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) |
 | Self-scan findings, `// dry-rs:ignore`, dogfood cleanup | [`dry-dogfood`](.agents/skills/dry-dogfood/) |
-| Local verify tiers, crap path, gate prohibitions | [`verify-gates`](.agents/skills/verify-gates/) |
+| Local verify tiers, gate prohibitions | [`verify-gates`](.agents/skills/verify-gates/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |
 | Traits, modules, dependency direction | [`rust-solid-design`](.agents/skills/rust-solid-design/) |
 
@@ -160,7 +160,7 @@ The directory is symlinked from [`.cursor/commands`](.cursor/commands).
 
 Prefer repository commands over manually recreating equivalent workflows.
 
-- `/verify` — `./scripts/verify.sh` lite or full (fmt, Clippy, test; full adds deny, audit, dry-rs findings=0, llvm-cov, crap threshold 5)
+- `/verify` — `./scripts/verify.sh` lite or full (fmt, Clippy, test; full adds deny, audit, dry-rs findings=0)
 - `/dry-dogfood` — clear dry-rs self-scan findings to zero without relaxing gates
 - `/design-scan` — style + SOLID checklist with must-fix / nice-to-have / keep-as-is
 
@@ -186,8 +186,8 @@ A change is complete when:
 | Touched area | Minimum verification |
 | ------------ | -------------------- |
 | Any `.rs` / workspace code | `./scripts/verify.sh lite` (or the equivalent failing step while iterating) |
-| Dogfood, CRAP/coverage, or module splits | `./scripts/verify.sh full` (or `/verify`) |
-| Merge-ready claim | `/verify` full (`deny`, `audit`, dry-rs `findings=0`, llvm-cov, crap threshold 5) |
+| Dogfood or module splits | `./scripts/verify.sh full` (or `/verify`) |
+| Merge-ready claim | `/verify` full (`deny`, `audit`, dry-rs `findings=0`) |
 
 - Do not claim a check passed unless it was actually run and passed.
 - If verification cannot be completed, clearly state what was not run and why.

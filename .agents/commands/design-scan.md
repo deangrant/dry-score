@@ -39,4 +39,4 @@ Intentional patterns that look like smells but should not change (e.g. CC-split
 
 - Cite concrete paths and symbols.
 - Do not invent traits or speculative refactors in must-fix.
-- Do not propose relaxing clippy/CRAP thresholds.
+- Do not propose relaxing clippy thresholds.

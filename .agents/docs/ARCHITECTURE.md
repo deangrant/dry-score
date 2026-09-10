@@ -237,7 +237,7 @@ execution.
 ## Verification and agent layout
 
 Run full local gates (fmt, Clippy, deny, audit, test, dry-rs self-scan with
-`findings=0`, llvm-cov, crap threshold 5):
+`findings=0`):
 
 ```bash
 ./scripts/verify.sh full
