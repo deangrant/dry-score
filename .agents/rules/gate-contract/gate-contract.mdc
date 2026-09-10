@@ -1,0 +1,16 @@
+---
+description: Enforce lite/full verify gates after Rust edits; never relax thresholds
+globs: "**/*"
+alwaysApply: true
+---
+
+# Gate contract
+
+- After non-trivial Rust edits, run `./scripts/verify.sh lite` (or `/verify`
+  lite) before claiming the change works.
+- After dry-rs dogfood fixes, module splits, CRAP/coverage work, or finishing
+  an “implement the plan” task, run `./scripts/verify.sh full` (or `/verify`).
+- Never edit `clippy.toml`, CRAP `--threshold`, or `dry.toml` solely to hide
+  failures or self-scan findings.
+- Prefer [`scripts/verify.sh`](../../../scripts/verify.sh) over pasted ad-hoc
+  command lists. See [`.agents/skills/verify-gates/SKILL.md`](../../skills/verify-gates/SKILL.md).
