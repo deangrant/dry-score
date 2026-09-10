@@ -1,7 +1,5 @@
 //! Primary expression emitters.
 
-use syn::Lit;
-
 use super::super::emit_pat;
 use super::super::ops::{bin_op_label, un_op_label};
 use super::emit_expr;
@@ -26,10 +24,8 @@ pub(super) fn emit_unary(unary: &syn::ExprUnary, placeholders: &mut PlaceholderM
 }
 
 pub(super) fn emit_return(ret: &syn::ExprReturn, placeholders: &mut PlaceholderMap) -> NormNode {
-    ret.expr.as_ref().map_or_else(
-        || NormNode::leaf("return"),
-        |inner| NormNode::branch("return", vec![emit_expr(inner, placeholders)]),
-    )
+    // dry-rs:ignore. Thin optional-inner wrappers share shape by design.
+    super::super::shared::emit_optional_inner("return", ret.expr.as_deref(), placeholders)
 }
 
 pub(super) fn emit_list(
@@ -88,7 +84,9 @@ pub(super) fn emit_field(field: &syn::ExprField, placeholders: &mut PlaceholderM
         "field",
         vec![
             emit_expr(&field.base, placeholders),
-            NormNode::leaf(placeholders.placeholder(&field_member_name(&field.member))),
+            NormNode::leaf(
+                placeholders.placeholder(&super::super::shared::member_name(&field.member)),
+            ),
         ],
     )
 }
@@ -103,71 +101,11 @@ pub(super) fn emit_closure(
     NormNode::branch("closure", children)
 }
 
-fn field_member_name(member: &syn::Member) -> String {
-    match member {
-        syn::Member::Named(ident) => ident.to_string(),
-        syn::Member::Unnamed(index) => index.index.to_string(),
-    }
-}
-
-pub(super) const fn lit_label(lit: &Lit) -> &'static str {
-    match lit_text_label(lit) {
-        Some(label) => label,
-        None => lit_numeric_label(lit),
-    }
-}
-
-const fn lit_text_label(lit: &Lit) -> Option<&'static str> {
-    match lit {
-        Lit::Str(_) => Some("lit_str"),
-        Lit::ByteStr(_) => Some("lit_bytestr"),
-        Lit::CStr(_) => Some("lit_cstr"),
-        _ => lit_byte_char_label(lit),
-    }
-}
-
-const fn lit_byte_char_label(lit: &Lit) -> Option<&'static str> {
-    match lit {
-        Lit::Byte(_) => Some("lit_byte"),
-        Lit::Char(_) => Some("lit_char"),
-        _ => None,
-    }
-}
-
-const fn lit_numeric_label(lit: &Lit) -> &'static str {
-    match lit {
-        Lit::Int(_) => "lit_int",
-        Lit::Float(_) => "lit_float",
-        Lit::Bool(_) => "lit_bool",
-        _ => "lit_other",
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::normalize::placeholders::PlaceholderMap;
     use syn::parse_quote;
-
-    #[test]
-    #[expect(
-        clippy::cognitive_complexity,
-        reason = "literal label corpus is intentionally flat assertions"
-    )]
-    fn literal_labels() {
-        assert_eq!(lit_label(&parse_quote!("hi")), "lit_str");
-        assert_eq!(lit_label(&parse_quote!(b"hi")), "lit_bytestr");
-        assert_eq!(lit_label(&parse_quote!(b'x')), "lit_byte");
-        assert_eq!(lit_label(&parse_quote!('x')), "lit_char");
-        assert_eq!(lit_label(&parse_quote!(1)), "lit_int");
-        assert_eq!(lit_label(&parse_quote!(1.5)), "lit_float");
-        assert_eq!(lit_label(&parse_quote!(true)), "lit_bool");
-        assert_eq!(lit_label(&parse_quote!(c"hi")), "lit_cstr");
-        assert_eq!(
-            lit_label(&syn::Lit::Verbatim(proc_macro2::Literal::i32_unsuffixed(0))),
-            "lit_other"
-        );
-    }
 
     #[test]
     fn expression_helpers() {

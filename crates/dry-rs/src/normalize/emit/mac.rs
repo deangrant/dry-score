@@ -74,35 +74,7 @@ fn literal_label(literal: proc_macro2::Literal) -> &'static str {
 }
 
 fn label_from_lit_stream(stream: TokenStream) -> &'static str {
-    syn::parse2::<syn::Lit>(stream).map_or("lit_other", |lit| {
-        lit_text_label(&lit).unwrap_or_else(|| lit_numeric_label(&lit))
-    })
-}
-
-const fn lit_text_label(lit: &syn::Lit) -> Option<&'static str> {
-    match lit {
-        syn::Lit::Str(_) => Some("lit_str"),
-        syn::Lit::ByteStr(_) => Some("lit_bytestr"),
-        syn::Lit::CStr(_) => Some("lit_cstr"),
-        _ => lit_byte_char_label(lit),
-    }
-}
-
-const fn lit_byte_char_label(lit: &syn::Lit) -> Option<&'static str> {
-    match lit {
-        syn::Lit::Byte(_) => Some("lit_byte"),
-        syn::Lit::Char(_) => Some("lit_char"),
-        _ => None,
-    }
-}
-
-const fn lit_numeric_label(lit: &syn::Lit) -> &'static str {
-    match lit {
-        syn::Lit::Int(_) => "lit_int",
-        syn::Lit::Float(_) => "lit_float",
-        // `true`/`false` are idents in token trees, not literals.
-        _ => "lit_other",
-    }
+    syn::parse2::<syn::Lit>(stream).map_or("lit_other", |lit| super::lit_label(&lit))
 }
 
 #[cfg(test)]
@@ -219,7 +191,9 @@ mod tests {
         assert!(none_node.children.iter().any(|c| c.label == "tt_none"));
         assert_eq!(label_from_lit_stream(TokenStream::new()), "lit_other");
         assert_eq!(
-            lit_numeric_label(&syn::Lit::Verbatim(proc_macro2::Literal::i32_unsuffixed(0))),
+            super::super::lit_label(&syn::Lit::Verbatim(
+                proc_macro2::Literal::i32_unsuffixed(0,)
+            )),
             "lit_other"
         );
     }

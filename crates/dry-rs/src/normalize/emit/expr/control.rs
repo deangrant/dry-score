@@ -41,10 +41,7 @@ pub(super) fn emit_for(for_loop: &syn::ExprForLoop, placeholders: &mut Placehold
 }
 
 pub(super) fn emit_loop(expr_loop: &syn::ExprLoop, placeholders: &mut PlaceholderMap) -> NormNode {
-    NormNode::branch(
-        "loop",
-        vec![super::super::emit_block(&expr_loop.body, placeholders)],
-    )
+    super::super::shared::emit_labeled_block("loop", &expr_loop.body, placeholders)
 }
 
 pub(super) fn emit_match(
@@ -65,30 +62,21 @@ pub(super) fn emit_match(
 }
 
 pub(super) fn emit_assign(assign: &syn::ExprAssign, placeholders: &mut PlaceholderMap) -> NormNode {
-    NormNode::branch(
-        "assign",
-        vec![
-            emit_expr(&assign.left, placeholders),
-            emit_expr(&assign.right, placeholders),
-        ],
-    )
+    super::super::shared::emit_pair("assign", &assign.left, &assign.right, placeholders)
 }
 
 pub(super) fn emit_async(
     expr_async: &syn::ExprAsync,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    NormNode::branch(
-        "async",
-        vec![super::super::emit_block(&expr_async.block, placeholders)],
-    )
+    super::super::shared::emit_labeled_block("async", &expr_async.block, placeholders)
 }
 
 pub(super) fn emit_await(
     expr_await: &syn::ExprAwait,
     placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    NormNode::branch("await", vec![emit_expr(&expr_await.base, placeholders)])
+    super::super::shared::emit_unary_wrap("await", &expr_await.base, placeholders)
 }
 
 #[cfg(test)]

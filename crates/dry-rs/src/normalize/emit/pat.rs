@@ -1,10 +1,11 @@
 //! Pattern emission for structural fingerprints.
 
-use syn::{Member, Pat, Path, RangeLimits};
+use syn::{Pat, Path};
 
 use super::emit_block;
-use super::emit_expr;
+use super::lit_label;
 use super::mac::emit_macro;
+use super::shared::{emit_range_like, member_name};
 use crate::normalize::placeholders::PlaceholderMap;
 use crate::normalize::tree::NormNode;
 
@@ -18,10 +19,12 @@ pub fn emit_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> NormNode {
 }
 
 fn try_emit_simple(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     try_emit_binding(pat, placeholders).or_else(|| try_emit_atom_pat(pat))
 }
 
 fn try_emit_binding(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     match pat {
         Pat::Ident(ident) => Some(emit_ident_pat(ident, placeholders)),
         Pat::Type(ty) => Some(NormNode::branch(
@@ -33,15 +36,17 @@ fn try_emit_binding(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<Norm
 }
 
 fn try_emit_atom_pat(pat: &Pat) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     match pat {
         Pat::Wild(_) => Some(NormNode::leaf("pat_wild")),
-        Pat::Lit(lit) => Some(NormNode::leaf(lit_kind(&lit.lit))),
+        Pat::Lit(lit) => Some(NormNode::leaf(lit_label(&lit.lit))),
         Pat::Rest(_) => Some(NormNode::leaf("pat_rest")),
         _ => None,
     }
 }
 
 fn try_emit_wrap_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     match pat {
         Pat::Paren(paren) => Some(emit_pat(&paren.pat, placeholders)),
         Pat::Reference(reference) => Some(NormNode::branch(
@@ -53,10 +58,12 @@ fn try_emit_wrap_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<Nor
 }
 
 fn try_emit_compound(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     try_emit_or_range(pat, placeholders).or_else(|| try_emit_seq_pat(pat, placeholders))
 }
 
 fn try_emit_or_range(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     match pat {
         Pat::Or(or_pat) => {
             let children = or_pat.cases.iter().map(|case| emit_pat(case, placeholders)).collect();
@@ -68,6 +75,7 @@ fn try_emit_or_range(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<Nor
 }
 
 fn try_emit_seq_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     match pat {
         Pat::Slice(slice) => {
             let children = slice.elems.iter().map(|elem| emit_pat(elem, placeholders)).collect();
@@ -82,10 +90,12 @@ fn try_emit_seq_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<Norm
 }
 
 fn try_emit_pathish(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     try_emit_named_path(pat, placeholders).or_else(|| try_emit_pat_macro_const(pat, placeholders))
 }
 
 fn try_emit_named_path(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     Some(match pat {
         Pat::Path(path) => emit_path_pat(path, placeholders),
         Pat::Struct(strct) => emit_struct_pat(strct, placeholders),
@@ -95,6 +105,7 @@ fn try_emit_named_path(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<N
 }
 
 fn try_emit_pat_macro_const(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
+    // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     Some(match pat {
         Pat::Macro(mac) => emit_macro(&mac.mac, placeholders),
         Pat::Const(expr_const) => NormNode::branch(
@@ -137,31 +148,7 @@ fn emit_multi_segment_path(path: &Path, placeholders: &mut PlaceholderMap) -> No
 }
 
 fn emit_range_pat(range: &syn::ExprRange, placeholders: &mut PlaceholderMap) -> NormNode {
-    let label = range_pat_label(range.limits);
-    let children = range_bound_nodes(range, placeholders);
-    if children.is_empty() {
-        NormNode::leaf(label)
-    } else {
-        NormNode::branch(label, children)
-    }
-}
-
-const fn range_pat_label(limits: RangeLimits) -> &'static str {
-    match limits {
-        RangeLimits::HalfOpen(_) => "pat_range",
-        RangeLimits::Closed(_) => "pat_range_inclusive",
-    }
-}
-
-fn range_bound_nodes(range: &syn::ExprRange, placeholders: &mut PlaceholderMap) -> Vec<NormNode> {
-    let mut children = Vec::new();
-    if let Some(start) = &range.start {
-        children.push(emit_expr(start, placeholders));
-    }
-    if let Some(end) = &range.end {
-        children.push(emit_expr(end, placeholders));
-    }
-    children
+    emit_range_like(range, "pat_range", "pat_range_inclusive", placeholders)
 }
 
 fn emit_struct_pat(strct: &syn::PatStruct, placeholders: &mut PlaceholderMap) -> NormNode {
@@ -192,46 +179,6 @@ fn path_segment_nodes(path: &Path, placeholders: &mut PlaceholderMap) -> Vec<Nor
         .iter()
         .map(|seg| NormNode::leaf(placeholders.placeholder(&seg.ident.to_string())))
         .collect()
-}
-
-fn member_name(member: &Member) -> String {
-    match member {
-        Member::Named(ident) => ident.to_string(),
-        Member::Unnamed(index) => index.index.to_string(),
-    }
-}
-
-const fn lit_kind(lit: &syn::Lit) -> &'static str {
-    match lit_text_kind(lit) {
-        Some(label) => label,
-        None => lit_numeric_kind(lit),
-    }
-}
-
-const fn lit_text_kind(lit: &syn::Lit) -> Option<&'static str> {
-    match lit {
-        syn::Lit::Str(_) => Some("lit_str"),
-        syn::Lit::ByteStr(_) => Some("lit_bytestr"),
-        syn::Lit::CStr(_) => Some("lit_cstr"),
-        _ => lit_byte_char_kind(lit),
-    }
-}
-
-const fn lit_byte_char_kind(lit: &syn::Lit) -> Option<&'static str> {
-    match lit {
-        syn::Lit::Byte(_) => Some("lit_byte"),
-        syn::Lit::Char(_) => Some("lit_char"),
-        _ => None,
-    }
-}
-
-const fn lit_numeric_kind(lit: &syn::Lit) -> &'static str {
-    match lit {
-        syn::Lit::Int(_) => "lit_int",
-        syn::Lit::Float(_) => "lit_float",
-        syn::Lit::Bool(_) => "lit_bool",
-        _ => "lit_other",
-    }
 }
 
 #[cfg(test)]
@@ -331,7 +278,7 @@ mod tests {
         let open_full = Pat::Range(syn::ExprRange {
             attrs: Vec::new(),
             start: None,
-            limits: RangeLimits::HalfOpen(syn::token::DotDot::default()),
+            limits: syn::RangeLimits::HalfOpen(syn::token::DotDot::default()),
             end: None,
         });
         assert_eq!(
@@ -341,7 +288,7 @@ mod tests {
         let closed_full = Pat::Range(syn::ExprRange {
             attrs: Vec::new(),
             start: None,
-            limits: RangeLimits::Closed(syn::token::DotDotEq::default()),
+            limits: syn::RangeLimits::Closed(syn::token::DotDotEq::default()),
             end: None,
         });
         assert_eq!(
@@ -367,7 +314,7 @@ mod tests {
             try_emit_pat_macro_const(&parse_quote!(_), &mut PlaceholderMap::default()).is_none()
         );
         assert_eq!(
-            lit_kind(&syn::Lit::Verbatim(proc_macro2::Literal::i32_unsuffixed(0))),
+            lit_label(&syn::Lit::Verbatim(proc_macro2::Literal::i32_unsuffixed(0))),
             "lit_other"
         );
     }

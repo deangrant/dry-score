@@ -1,9 +1,11 @@
 //! Convert `syn` syntax into [`NormNode`] trees.
 
 mod expr;
+mod lit;
 mod mac;
 mod ops;
 mod pat;
+mod shared;
 
 use syn::{Block, Stmt};
 
@@ -12,6 +14,7 @@ use super::tree::NormNode;
 
 #[doc(inline)]
 pub use expr::emit_expr;
+pub(super) use lit::lit_label;
 use mac::emit_macro;
 pub(super) use pat::emit_pat;
 

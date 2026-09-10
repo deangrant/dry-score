@@ -79,20 +79,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn form_kind_as_str() {
+    #[expect(
+        clippy::cognitive_complexity,
+        reason = "enum label corpus is intentionally flat assertions"
+    )]
+    fn enum_as_str_labels() {
         assert_eq!(FormKind::Production.as_str(), "production");
         assert_eq!(FormKind::Test.as_str(), "test");
-    }
-
-    #[test]
-    fn clone_type_as_str() {
         assert_eq!(CloneType::Type1.as_str(), "type_1");
         assert_eq!(CloneType::Type2.as_str(), "type_2");
         assert_eq!(CloneType::Type3.as_str(), "type_3");
-    }
-
-    #[test]
-    fn tier_as_str() {
         assert_eq!(Tier::AutoRefactor.as_str(), "auto_refactor");
         assert_eq!(Tier::ReviewFirst.as_str(), "review_first");
         assert_eq!(Tier::Advisory.as_str(), "advisory");

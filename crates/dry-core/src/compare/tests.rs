@@ -71,6 +71,7 @@ fn singleton_bucket_is_ignored() {
 
 #[test]
 fn near_miss_skips_below_threshold() {
+    // dry-rs:ignore. Shares empty-result shape with disjoint-fingerprint case.
     let left = form(1, 4, &[1, 2, 3, 4], &["a"]);
     let right = form(2, 4, &[9, 8, 7, 6], &["a"]);
     assert!(compare(&[left, right], 0.9).is_empty());
@@ -179,6 +180,7 @@ fn near_miss_reports_disjoint_pairs() {
 
 #[test]
 fn near_miss_no_shared_fingerprints_never_pairs() {
+    // dry-rs:ignore. Shares empty-result shape with below-threshold case.
     let left = form(1, 4, &[1, 2, 3, 4], &["a"]);
     let right = form(2, 4, &[9, 8, 7, 6], &["a"]);
     assert!(compare(&[left, right], 0.1).is_empty());

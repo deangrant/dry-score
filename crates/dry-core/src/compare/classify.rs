@@ -45,18 +45,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn exact_identical_idents_is_type_one() {
-        assert_eq!(classify(1.0, true), CloneType::Type1);
-    }
-
-    #[test]
-    fn exact_renamed_idents_is_type_two() {
-        assert_eq!(classify(1.0, false), CloneType::Type2);
-    }
-
-    #[test]
-    fn near_miss_is_type_three() {
-        assert_eq!(classify(0.9, true), CloneType::Type3);
+    fn classify_exact_and_near_miss() {
+        let cases = [
+            (1.0, true, CloneType::Type1),
+            (1.0, false, CloneType::Type2),
+            (0.9, true, CloneType::Type3),
+        ];
+        for (score, idents, expected) in cases {
+            assert_eq!(classify(score, idents), expected);
+        }
     }
 
     #[test]

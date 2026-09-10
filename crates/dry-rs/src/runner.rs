@@ -122,6 +122,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_project() -> std::path::PathBuf {
+        // dry-rs:ignore. Temp-dir harness shape differs from walk by design.
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir().join(format!("dry-rs-runner-{stamp}"));
         assert!(fs::create_dir_all(base.join("src")).is_ok());

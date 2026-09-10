@@ -127,23 +127,22 @@ fn collect_dir(
 }
 
 fn read_dir_entries(path: &Path) -> Result<Vec<fs::DirEntry>, WalkError> {
-    let entries = fs::read_dir(path).map_err(|err| walk_dir_error(path, &err))?;
+    let entries = fs::read_dir(path)
+        .map_err(|err| walk_io_error(format!("failed to read {}: {err}", path.display())))?;
     let mut out = Vec::new();
     for entry in entries {
-        out.push(entry.map_err(|err| walk_entry_error(path, &err))?);
+        out.push(entry.map_err(|err| {
+            walk_io_error(format!(
+                "failed to read entry under {}: {err}",
+                path.display()
+            ))
+        })?);
     }
     Ok(out)
 }
 
-fn walk_dir_error(path: &Path, err: &std::io::Error) -> WalkError {
-    WalkError::new(format!("failed to read {}: {err}", path.display()))
-}
-
-fn walk_entry_error(path: &Path, err: &std::io::Error) -> WalkError {
-    WalkError::new(format!(
-        "failed to read entry under {}: {err}",
-        path.display()
-    ))
+fn walk_io_error(message: String) -> WalkError {
+    WalkError::new(message)
 }
 
 fn is_excluded_relative(path: &Path, root: &Path, excludes: &[String]) -> bool {
@@ -186,6 +185,7 @@ mod tests {
     }
 
     fn temp_project() -> PathBuf {
+        // dry-rs:ignore. Temp-dir harness shape differs from runner by design.
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir().join(format!("dry-rs-walk-{stamp}"));
         assert!(fs::create_dir_all(base.join("src")).is_ok());
@@ -301,7 +301,18 @@ mod tests {
         let missing = Path::new("/no/such/dry-rs-dir");
         assert!(read_dir_entries(missing).is_err());
         let err = std::io::Error::other("boom");
-        assert!(!walk_dir_error(missing, &err).to_string().is_empty());
-        assert!(!walk_entry_error(missing, &err).to_string().is_empty());
+        assert!(
+            !walk_io_error(format!("failed to read {}: {err}", missing.display()))
+                .to_string()
+                .is_empty()
+        );
+        assert!(
+            !walk_io_error(format!(
+                "failed to read entry under {}: {err}",
+                missing.display()
+            ))
+            .to_string()
+            .is_empty()
+        );
     }
 }

@@ -210,6 +210,7 @@ mod tests {
 
     #[test]
     fn format_as_str_covers_variants() {
+        // dry-rs:ignore. OutputFormat vocabulary test; shared assert shape is intentional.
         assert_eq!(OutputFormat::Text.as_str(), "text");
         assert_eq!(OutputFormat::Json.as_str(), "json");
         assert_eq!(OutputFormat::Both.as_str(), "both");
