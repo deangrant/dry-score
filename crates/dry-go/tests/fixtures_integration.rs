@@ -88,3 +88,12 @@ fn nested_func_literal_finds_type_one() {
         true,
     );
 }
+
+#[test]
+fn type_1_methods_are_auto_refactor() {
+    assert_first_clone(
+        &analyze_fixture("type_1_methods", 0.85),
+        CloneType::Type1,
+        true,
+    );
+}

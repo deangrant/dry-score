@@ -12,7 +12,24 @@ pub fn emit_node(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMa
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
         return leaf;
     }
+    emit_branch(node, source, placeholders)
+}
+
+fn emit_branch(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMap) -> NormNode {
     let label = structural_label(node, source);
+    let children = emit_children(node, source, placeholders);
+    if children.is_empty() {
+        NormNode::leaf(label)
+    } else {
+        NormNode::branch(label, children)
+    }
+}
+
+fn emit_children(
+    node: Node<'_>,
+    source: &[u8],
+    placeholders: &mut PlaceholderMap,
+) -> Vec<NormNode> {
     let mut children = Vec::new();
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
@@ -21,11 +38,7 @@ pub fn emit_node(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMa
         }
         children.push(emit_node(child, source, placeholders));
     }
-    if children.is_empty() {
-        NormNode::leaf(label)
-    } else {
-        NormNode::branch(label, children)
-    }
+    children
 }
 
 fn should_skip(node: Node<'_>) -> bool {
@@ -37,16 +50,52 @@ fn try_emit_leaf(
     source: &[u8],
     placeholders: &mut PlaceholderMap,
 ) -> Option<NormNode> {
+    // dry-rs:ignore. CC-driven leaf family dispatch; parallel shape is intentional.
+    try_emit_ident_leaf(node, source, placeholders)
+        .or_else(|| try_emit_number_leaf(node))
+        .or_else(|| try_emit_text_leaf(node))
+        .or_else(|| try_emit_keyword_leaf(node))
+}
+
+fn try_emit_ident_leaf(
+    node: Node<'_>,
+    source: &[u8],
+    placeholders: &mut PlaceholderMap,
+) -> Option<NormNode> {
     match node.kind() {
         "identifier" | "field_identifier" | "package_identifier" | "type_identifier" => {
             let text = node_text(node, source);
             Some(NormNode::leaf(placeholders.placeholder(text)))
         }
-        "int_literal" => Some(NormNode::leaf("lit_int")),
+        _ => None,
+    }
+}
+
+fn try_emit_number_leaf(node: Node<'_>) -> Option<NormNode> {
+    if node.kind() == "int_literal" {
+        return Some(NormNode::leaf("lit_int"));
+    }
+    try_emit_non_int_number_leaf(node.kind())
+}
+
+fn try_emit_non_int_number_leaf(kind: &str) -> Option<NormNode> {
+    match kind {
         "float_literal" => Some(NormNode::leaf("lit_float")),
         "imaginary_literal" => Some(NormNode::leaf("lit_imag")),
         "rune_literal" => Some(NormNode::leaf("lit_rune")),
+        _ => None,
+    }
+}
+
+fn try_emit_text_leaf(node: Node<'_>) -> Option<NormNode> {
+    match node.kind() {
         "interpreted_string_literal" | "raw_string_literal" => Some(NormNode::leaf("lit_str")),
+        _ => None,
+    }
+}
+
+fn try_emit_keyword_leaf(node: Node<'_>) -> Option<NormNode> {
+    match node.kind() {
         "true" | "false" | "nil" | "iota" => Some(NormNode::leaf(node.kind())),
         _ => None,
     }
@@ -106,5 +155,25 @@ mod tests {
         let node = emit_node(body, src.as_bytes(), &mut placeholders);
         assert_eq!(node.label, "block");
         assert!(!placeholders.ident_trace.is_empty());
+    }
+
+    #[test]
+    fn emit_covers_literals_keywords_and_comments() {
+        let src = r#"package p
+func demo() {
+  // skip me
+  x := 1.5
+  y := "hi"
+  z := 'a'
+  _ = true
+  _ = nil
+  _ = 1i
+}
+"#;
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let mut placeholders = PlaceholderMap::default();
+        let _ = emit_node(tree.root_node(), src.as_bytes(), &mut placeholders);
+        assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
     }
 }

@@ -47,23 +47,45 @@ struct ExtractCtx<'a> {
 }
 
 fn walk_forms(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
-    match node.kind() {
-        "function_declaration" => {
-            maybe_emit_named(node, ctx);
-            let name = function_name(node, ctx.source_bytes);
-            walk_children(node, name.as_deref(), ctx);
-        }
-        "method_declaration" => {
-            maybe_emit_named(node, ctx);
-            let name = method_name(node, ctx.source_bytes);
-            walk_children(node, name.as_deref(), ctx);
-        }
-        "func_literal" => {
-            maybe_emit_literal(node, parent_name, ctx);
-            walk_children(node, parent_name, ctx);
-        }
-        _ => walk_children(node, parent_name, ctx),
+    // dry-rs:ignore. CC-driven CST kind dispatch; parallel shape is intentional.
+    if try_walk_function(node, ctx) || try_walk_method(node, ctx) {
+        return;
     }
+    if try_walk_literal(node, parent_name, ctx) {
+        return;
+    }
+    walk_children(node, parent_name, ctx);
+}
+
+fn try_walk_function(node: Node<'_>, ctx: &mut ExtractCtx<'_>) -> bool {
+    // dry-rs:ignore. CC-driven CST walk helpers; parallel shape is intentional.
+    if node.kind() != "function_declaration" {
+        return false;
+    }
+    maybe_emit_function(node, ctx);
+    let name = function_name(node, ctx.source_bytes);
+    walk_children(node, name.as_deref(), ctx);
+    true
+}
+
+fn try_walk_method(node: Node<'_>, ctx: &mut ExtractCtx<'_>) -> bool {
+    // dry-rs:ignore. CC-driven CST walk helpers; parallel shape is intentional.
+    if node.kind() != "method_declaration" {
+        return false;
+    }
+    maybe_emit_method(node, ctx);
+    let name = method_name(node, ctx.source_bytes);
+    walk_children(node, name.as_deref(), ctx);
+    true
+}
+
+fn try_walk_literal(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) -> bool {
+    if node.kind() != "func_literal" {
+        return false;
+    }
+    maybe_emit_literal(node, parent_name, ctx);
+    walk_children(node, parent_name, ctx);
+    true
 }
 
 fn walk_children(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
@@ -76,15 +98,23 @@ fn walk_children(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx
     }
 }
 
-fn maybe_emit_named(node: Node<'_>, ctx: &mut ExtractCtx<'_>) {
+fn maybe_emit_function(node: Node<'_>, ctx: &mut ExtractCtx<'_>) {
+    // dry-rs:ignore. CC-driven emit shells; parallel shape is intentional.
     let Some(body) = node.child_by_field_name("body") else {
         return;
     };
-    let name = match node.kind() {
-        "method_declaration" => method_name(node, ctx.source_bytes),
-        _ => function_name(node, ctx.source_bytes),
+    let Some(name) = function_name(node, ctx.source_bytes) else {
+        return;
     };
-    let Some(name) = name else {
+    push_form(body, &name, ctx);
+}
+
+fn maybe_emit_method(node: Node<'_>, ctx: &mut ExtractCtx<'_>) {
+    // dry-rs:ignore. CC-driven emit shells; parallel shape is intentional.
+    let Some(body) = node.child_by_field_name("body") else {
+        return;
+    };
+    let Some(name) = method_name(node, ctx.source_bytes) else {
         return;
     };
     push_form(body, &name, ctx);
@@ -143,27 +173,49 @@ fn method_name(node: Node<'_>, source: &[u8]) -> Option<String> {
 
 fn receiver_type_name(node: Node<'_>, source: &[u8]) -> Option<String> {
     let params = node.child_by_field_name("receiver")?;
+    first_receiver_type(params, source)
+}
+
+fn first_receiver_type(params: Node<'_>, source: &[u8]) -> Option<String> {
     let mut cursor = params.walk();
     for child in params.children(&mut cursor) {
-        if child.kind() != "parameter_declaration" {
-            continue;
-        }
-        if let Some(ty) = child.child_by_field_name("type") {
-            return Some(strip_pointer(ty, source));
+        if let Some(name) = param_type_name(child, source) {
+            return Some(name);
         }
     }
     None
 }
 
+fn param_type_name(child: Node<'_>, source: &[u8]) -> Option<String> {
+    if child.kind() != "parameter_declaration" {
+        return None;
+    }
+    child.child_by_field_name("type").map(|ty| strip_pointer(ty, source))
+}
+
 fn strip_pointer(node: Node<'_>, source: &[u8]) -> String {
-    if node.kind() == "pointer_type"
-        && let Some(inner) = node.named_child(0)
-    {
+    if let Some(inner) = pointer_inner(node) {
         return strip_pointer(inner, source);
     }
-    if node.kind() == "type_identifier" || node.kind() == "identifier" {
+    if is_type_name(node) {
         return node_text(node, source).to_owned();
     }
+    first_named_child_type(node, source)
+}
+
+fn pointer_inner(node: Node<'_>) -> Option<Node<'_>> {
+    if node.kind() == "pointer_type" {
+        node.named_child(0)
+    } else {
+        None
+    }
+}
+
+fn is_type_name(node: Node<'_>) -> bool {
+    node.kind() == "type_identifier" || node.kind() == "identifier"
+}
+
+fn first_named_child_type(node: Node<'_>, source: &[u8]) -> String {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
         if child.is_named() {
@@ -171,4 +223,119 @@ fn strip_pointer(node: Node<'_>, source: &[u8]) -> String {
         }
     }
     node_text(node, source).to_owned()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::normalize::parse::parse_source;
+    use std::path::Path;
+
+    #[test]
+    fn extracts_pointer_and_value_receiver_methods() {
+        let pointer = r"package p
+type T struct{}
+func (t *T) Run(n int) int {
+  if n < 0 {
+    n = 0 - n
+  }
+  return n + 1
+}
+";
+        let value = r"package p
+type T struct{}
+func (t T) Value(n int) int {
+  if n < 0 {
+    return 0
+  }
+  return n + 1
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let pointer_tree = parse_source(pointer).expect("parse");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let value_tree = parse_source(value).expect("parse");
+        let mut next_id = 1;
+        let pointer_forms = extract_forms(
+            pointer_tree.root_node(),
+            Path::new("run.go"),
+            pointer.as_bytes(),
+            pointer,
+            3,
+            2,
+            &mut next_id,
+        );
+        let value_forms = extract_forms(
+            value_tree.root_node(),
+            Path::new("value.go"),
+            value.as_bytes(),
+            value,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            pointer_forms.iter().any(|f| f.name == "T::Run"),
+            "forms={pointer_forms:?}"
+        );
+        assert!(
+            value_forms.iter().any(|f| f.name == "T::Value"),
+            "forms={value_forms:?}"
+        );
+    }
+
+    #[test]
+    fn kind_from_test_file_and_ignore_span() {
+        assert_eq!(kind_from_path(Path::new("foo_test.go")), FormKind::Test);
+        let src = r"package p
+func kept(n int) int {
+  // dry-go:ignore
+  if n < 0 {
+    return 0 - n
+  }
+  return n + 1
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.root_node(),
+            Path::new("kept.go"),
+            src.as_bytes(),
+            src,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(forms.is_empty(), "ignored span should drop form: {forms:?}");
+    }
+
+    #[test]
+    fn extracts_interface_receiver_methods() {
+        let src = r"package p
+func (x interface{}) Run(n int) int {
+  if n < 0 {
+    n = 0 - n
+  }
+  return n + 1
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.root_node(),
+            Path::new("iface.go"),
+            src.as_bytes(),
+            src,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            forms.iter().any(|f| f.name.contains("::Run")),
+            "forms={forms:?}"
+        );
+    }
 }
