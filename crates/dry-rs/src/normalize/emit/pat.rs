@@ -8,7 +8,7 @@ use super::lit_label;
 use super::mac::emit_macro;
 use super::shared::{emit_path_segments, member_name, path_segment_leaves};
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 /// Emits a normalized tree for a pattern.
 pub fn emit_pat(pat: &Pat, placeholders: &mut PlaceholderMap) -> NormNode {

@@ -5,7 +5,7 @@ use syn::{Block, Expr, RangeLimits};
 use super::super::emit_block;
 use super::emit_expr;
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 /// Emits `label` with zero or one child expression.
 pub(in crate::normalize::emit) fn emit_optional_inner(

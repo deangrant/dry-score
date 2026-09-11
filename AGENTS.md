@@ -21,8 +21,9 @@ a style linter or complexity scorer.
 
 | Package | Path | Role |
 | ------- | ---- | ---- |
-| Core | `crates/dry-core` | Domain, walk, config, analyze, compare, reporters (no AST deps) |
-| Rust adapter | `crates/dry-rs` | CLI, `syn` normalizer, and the `dry-rs` binary |
+| Core | `crates/dry-core` | Domain, walk, config, analyze, compare, shared CLI/runner, reporters (no AST deps) |
+| Rust adapter | `crates/dry-rs` | Rust `syn` normalizer and the `dry-rs` binary |
+| Go adapter | `crates/dry-go` | Go Tree-sitter normalizer and the `dry-go` binary |
 
 **Hard invariants (never violate):**
 
@@ -32,7 +33,7 @@ a style linter or complexity scorer.
 - `emit/shared` must not import `expr` (recursive wraps live in `expr/wrap`).
 - The walker does not follow symlinks.
 - Production and test forms (`FormKind`) never pair.
-- Workspace members are `dry-core` and `dry-rs` only.
+- Workspace members are `dry-core`, `dry-rs`, and `dry-go`.
 - No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
 
 **Runtime:** Rust toolchain `1.94.0`. Lean loop: `./scripts/verify.sh lite`. Full local
@@ -107,6 +108,7 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | If you are changing… | Read first |
 | -------------------- | ---------- |
 | Normalize, compare, tiers, walk/config map | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) |
+| Go Tree-sitter adapter (`dry-go`) | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) + ARCHITECTURE |
 | Self-scan findings, `// dry-rs:ignore`, dogfood cleanup | [`dry-dogfood`](.agents/skills/dry-dogfood/) |
 | Local verify tiers, gate prohibitions | [`verify-gates`](.agents/skills/verify-gates/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |

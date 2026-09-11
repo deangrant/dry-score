@@ -10,7 +10,7 @@ mod shared;
 use syn::{Block, Stmt};
 
 use super::placeholders::PlaceholderMap;
-use super::tree::NormNode;
+use dry_core::NormNode;
 
 #[doc(inline)]
 pub use expr::emit_expr;

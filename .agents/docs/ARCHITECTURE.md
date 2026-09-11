@@ -61,10 +61,15 @@ text, JSON, or both.
 **Runtime bar:**
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Workspace members: `dry-core`, `dry-rs` ([`Cargo.toml`](../../Cargo.toml))
-- Future language adapters implement
+- Workspace members: `dry-core`, `dry-rs`, `dry-go` ([`Cargo.toml`](../../Cargo.toml))
+- Language adapters implement
   [`LanguageNormalizer`](../../crates/dry-core/src/ports/normalizer.rs) and
   reuse the same comparison engine
+- Shared argv/report helpers live in `dry-core` (`cli`, `runner`); adapters supply
+  a normalizer and thin binary entrypoints
+- `NormNode` + FNV fingerprinting live in `dry-core::norm` (no AST deps)
+- Workspace lint `unsafe_code` is allow so Tree-sitter can link; `dry-core` and
+  `dry-rs` still `#![forbid(unsafe_code)]`. `dry-go` writes no `unsafe` in-tree.
 
 *Figure: analysis roots and config enter `dry-rs`; `dry-core` walks, normalizes
 via the adapter, compares forms, and emits the report.*
@@ -89,14 +94,14 @@ flowchart LR
 
 | Crate | Role |
 | ----- | ---- |
-| [`crates/dry-core`](../../crates/dry-core) | Language-agnostic domain, walk, config, analyze, compare, reporters |
-| [`crates/dry-rs`](../../crates/dry-rs) | CLI, Rust `syn` adapter, and the `dry-rs` binary |
+| [`crates/dry-core`](../../crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner, reporters |
+| [`crates/dry-rs`](../../crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
+| [`crates/dry-go`](../../crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 
-`dry-rs` depends on `dry-core`. A later language adapter would depend on
-`dry-core` the same way and plug in through `LanguageNormalizer`.
+Adapters depend on `dry-core` and plug in through `LanguageNormalizer`.
 
-Exit codes and report I/O live in [`runner`](../../crates/dry-rs/src/runner.rs).
-Flag parsing lives under [`cli/`](../../crates/dry-rs/src/cli/).
+Exit codes and report I/O live in [`runner`](../../crates/dry-core/src/runner.rs).
+Flag parsing lives under [`cli/`](../../crates/dry-core/src/cli/).
 
 ## High-level analysis flow
 
@@ -176,18 +181,34 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
-| CLI | [`cli/`](../../crates/dry-rs/src/cli/mod.rs) | Args, errors, parse orchestration |
-| Flag apply | [`cli/apply.rs`](../../crates/dry-rs/src/cli/apply.rs) | One-flag appliers and config overlays |
-| Runner | [`runner.rs`](../../crates/dry-rs/src/runner.rs) | Analyze, emit, exit mapping |
+| CLI | [`cli/`](../../crates/dry-core/src/cli/mod.rs) | Shared args, errors, parse orchestration |
+| Flag apply | [`cli/apply.rs`](../../crates/dry-core/src/cli/apply.rs) | One-flag appliers and config overlays |
+| Runner | [`runner.rs`](../../crates/dry-rs/src/runner.rs) | Thin Rust wrapper around `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-rs/src/normalize/mod.rs) | `RustNormalizer` / `LanguageNormalizer` |
 | Extract | [`normalize/extract.rs`](../../crates/dry-rs/src/normalize/extract.rs) | Named forms from items, impls, and trait defaults |
 | Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission (expr, pat, lit, mac, ops) |
 | Expr wrap | [`normalize/emit/expr/wrap.rs`](../../crates/dry-rs/src/normalize/emit/expr/wrap.rs) | Recursive emit helpers (optional, unary, block, pair, range) |
 | Shared emit | [`normalize/emit/shared.rs`](../../crates/dry-rs/src/normalize/emit/shared.rs) | Pure helpers only (must not import `expr`) |
-| Fingerprint | [`normalize/fingerprint.rs`](../../crates/dry-rs/src/normalize/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint set |
+| Fingerprint | [`norm/fingerprint.rs`](../../crates/dry-core/src/norm/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint set |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` |
-| Placeholders | [`normalize/placeholders.rs`](../../crates/dry-rs/src/normalize/placeholders.rs) | Positional ident renaming |
-| Tree | [`normalize/tree.rs`](../../crates/dry-rs/src/normalize/tree.rs) | `NormNode` leaf and branch |
+| Placeholders | [`placeholders.rs`](../../crates/dry-core/src/placeholders.rs) | Positional ident renaming |
+| Tree | [`norm/tree.rs`](../../crates/dry-core/src/norm/tree.rs) | `NormNode` leaf and branch |
+
+## `dry-go` module map
+
+[`main.rs`](../../crates/dry-go/src/main.rs) calls
+[`runner::run_from_env`](../../crates/dry-go/src/runner.rs), which parses argv via
+`dry-core` (`bin_name: "dry-go"`, force `extensions = ["go"]`) and runs
+[`GoNormalizer`](../../crates/dry-go/src/normalize/mod.rs).
+
+| Area | Path | Notes |
+| ---- | ---- | ----- |
+| Runner | [`runner.rs`](../../crates/dry-go/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
+| Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
+| Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Tree-sitter + `tree-sitter-go` |
+| Extract | [`normalize/extract.rs`](../../crates/dry-go/src/normalize/extract.rs) | Funcs, methods, `func_literal` |
+| Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode` |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` |
 
 *Figure: `main` → runner → CLI and analyze; the normalizer extracts, emits,
 fingerprints, and applies suppress markers.*
@@ -217,7 +238,7 @@ flowchart TB
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
-| Workspace members are `dry-core` and `dry-rs` only | Update this document if you add or rename crates |
+| Workspace members are `dry-core`, `dry-rs`, and `dry-go` | Update this document if you add or rename crates |
 
 ## Exit codes
 

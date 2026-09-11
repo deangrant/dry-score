@@ -1,0 +1,26 @@
+[package]
+name = "dry-go"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Structural duplication detector for Go source"
+readme = "../../README.md"
+repository = "https://github.com/deangrant/dry-score"
+keywords = ["dry", "duplication", "clone-detection", "go"]
+categories = ["development-tools", "command-line-utilities"]
+
+[lib]
+name = "dry_go"
+path = "src/lib.rs"
+
+[[bin]]
+name = "dry-go"
+path = "src/main.rs"
+
+[dependencies]
+dry-core = { workspace = true }
+tree-sitter = { workspace = true }
+tree-sitter-go = { workspace = true }
+
+[lints]
+workspace = true

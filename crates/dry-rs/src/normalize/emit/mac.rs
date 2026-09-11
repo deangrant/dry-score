@@ -4,7 +4,7 @@ use proc_macro2::{Delimiter, TokenStream, TokenTree};
 use syn::{Macro, MacroDelimiter};
 
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 /// Emits a normalized tree for a macro invocation.
 #[must_use]

@@ -1,7 +1,7 @@
 //! Subtree fingerprinting over [`NormNode`] trees.
 //!
 //! Digests use a fixed FNV-1a 64-bit protocol so fingerprints are stable across
-//! Rust toolchains and CI runners.
+//! toolchains and CI runners.
 
 use std::collections::BTreeSet;
 

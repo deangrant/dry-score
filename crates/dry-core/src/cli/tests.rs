@@ -2,15 +2,26 @@ use super::*;
 use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+fn opts() -> CliOptions {
+    CliOptions {
+        bin_name: "dry-core-test",
+        force_extensions: None,
+    }
+}
+
 fn args(items: &[&str]) -> Vec<String> {
-    std::iter::once("dry-rs".to_owned())
+    std::iter::once("dry-core-test".to_owned())
         .chain(items.iter().map(|s| (*s).to_owned()))
         .collect()
 }
 
+fn parse(items: &[&str]) -> Result<CliArgs, CliError> {
+    parse_args(args(items), &opts())
+}
+
 #[test]
 fn parse_defaults_and_flags() {
-    let parsed = parse_args(args(&["src", "--threshold", "0.9", "--format", "json"]));
+    let parsed = parse(&["src", "--threshold", "0.9", "--format", "json"]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
@@ -21,7 +32,7 @@ fn parse_defaults_and_flags() {
 
 #[test]
 fn parse_switches() {
-    let parsed = parse_args(args(&[
+    let parsed = parse(&[
         "--fail-on-findings",
         "--no-fail-on-findings",
         "--min-nodes",
@@ -30,7 +41,7 @@ fn parse_switches() {
         "5",
         "--json-out",
         "out.json",
-    ]));
+    ]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
@@ -42,43 +53,59 @@ fn parse_switches() {
 
 #[test]
 fn parse_errors() {
-    assert!(parse_args(args(&["--unknown"])).is_err());
-    assert!(parse_args(args(&["--threshold"])).is_err());
-    assert!(parse_args(args(&["--format", "nope"])).is_err());
-    assert!(parse_args(args(&["--min-nodes", "x"])).is_err());
-    assert!(parse_args(args(&["--min-lines"])).is_err());
-    assert!(parse_args(args(&["--min-lines", "x"])).is_err());
+    assert!(parse(&["--unknown"]).is_err());
+    assert!(parse(&["--threshold"]).is_err());
+    assert!(parse(&["--format", "nope"]).is_err());
+    assert!(parse(&["--min-nodes", "x"]).is_err());
+    assert!(parse(&["--min-lines"]).is_err());
+    assert!(parse(&["--min-lines", "x"]).is_err());
 }
 
 #[test]
 fn help_exits_success_via_stdout() {
     for flag in ["--help", "-h"] {
-        let err = parse_args(args(&[flag]));
+        let err = parse(&[flag]);
         assert!(err.is_err());
         #[expect(clippy::expect_used, reason = "test")]
         let err = err.expect_err("help");
         assert!(err.print_stdout);
         assert!(err.message.contains("--threshold"));
+        assert!(err.message.starts_with("dry-core-test [PATH]..."));
     }
 }
 
 #[test]
 fn threshold_bounds() {
-    assert!(parse_args(args(&["--threshold", "0.0"])).is_ok());
-    assert!(parse_args(args(&["--threshold", "1.0"])).is_ok());
-    assert!(parse_args(args(&["--threshold", "-0.1"])).is_err());
-    assert!(parse_args(args(&["--threshold", "1.1"])).is_err());
+    assert!(parse(&["--threshold", "0.0"]).is_ok());
+    assert!(parse(&["--threshold", "1.0"]).is_ok());
+    assert!(parse(&["--threshold", "-0.1"]).is_err());
+    assert!(parse(&["--threshold", "1.1"]).is_err());
 }
 
 #[test]
 fn default_path_is_dot() {
-    let parsed = parse_args(args(&[]));
+    let parsed = parse(&[]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
     assert_eq!(parsed.paths, vec![PathBuf::from(".")]);
     assert!(!CliError::usage("x").to_string().is_empty());
-    assert!(!help_text().is_empty());
+    assert!(!help_text("dry-core-test").is_empty());
+}
+
+#[test]
+fn force_extensions_overrides_config() {
+    let parsed = parse_args(
+        args(&[]),
+        &CliOptions {
+            bin_name: "dry-go",
+            force_extensions: Some(vec!["go".to_owned()]),
+        },
+    );
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let parsed = parsed.expect("ok");
+    assert_eq!(parsed.config.walk.extensions, vec!["go".to_owned()]);
 }
 
 #[test]
@@ -88,21 +115,21 @@ fn default_path_is_dot() {
 )]
 fn explicit_config_path() {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let dir = std::env::temp_dir().join(format!("dry-rs-cli-{stamp}"));
+    let dir = std::env::temp_dir().join(format!("dry-core-cli-{stamp}"));
     assert!(fs::create_dir_all(&dir).is_ok());
     let cfg = dir.join("custom.toml");
     assert!(fs::write(&cfg, "[gate]\nthreshold = 0.77\n").is_ok());
     let cfg_s = cfg.to_string_lossy().into_owned();
-    let parsed = parse_args(args(&["--config", &cfg_s]));
+    let parsed = parse(&["--config", &cfg_s]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
     assert!((parsed.config.gate.threshold - 0.77).abs() < f64::EPSILON);
-    assert!(parse_args(args(&["--config", "/no/such.toml"])).is_err());
+    assert!(parse(&["--config", "/no/such.toml"]).is_err());
     let discovered = load_effective_config(None);
     assert!(discovered.is_ok());
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
-    let bare = std::env::temp_dir().join(format!("dry-rs-cli-bare-{stamp}"));
+    let bare = std::env::temp_dir().join(format!("dry-core-cli-bare-{stamp}"));
     assert!(fs::create_dir_all(&bare).is_ok());
     let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     assert!(env::set_current_dir(&bare).is_ok());

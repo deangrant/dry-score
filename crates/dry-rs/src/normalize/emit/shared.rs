@@ -3,7 +3,7 @@
 use syn::{Member, Path};
 
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 /// Named or unnamed struct/tuple field spelling for placeholders.
 pub(super) fn member_name(member: &Member) -> String {

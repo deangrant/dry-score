@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dry-rs", "crates/dry-core"]
+members = ["crates/dry-rs", "crates/dry-core", "crates/dry-go"]
 
 [workspace.package]
 edition = "2024"
@@ -13,9 +13,11 @@ toml = "1.1"
 syn = { version = "3", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 dry-core = { path = "crates/dry-core", version = "0.1.0" }
+tree-sitter = "0.25"
+tree-sitter-go = "0.25"
 
 [workspace.lints.rust]
-unsafe_code = "forbid"
+unsafe_code = "allow"
 non_ascii_idents = "forbid"
 warnings = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }

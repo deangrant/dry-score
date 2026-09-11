@@ -8,7 +8,7 @@ mod wrap;
 use syn::Expr;
 
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 use super::lit_label;
 use super::mac::emit_macro;

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use dry_core::{Config, OutputFormat};
+use crate::{Config, OutputFormat};
 
 use super::{CliError, RawFlags, help_text};
 
@@ -24,7 +24,7 @@ fn try_flag_arg(
     raw: &mut RawFlags,
 ) -> Option<Result<(), CliError>> {
     if arg == "--help" || arg == "-h" {
-        return Some(Err(CliError::help(help_text())));
+        return Some(Err(CliError::help(help_text(raw.bin_name))));
     }
     try_apply_valued(arg, args, raw)
         .or_else(|| try_apply_switch(arg, raw))

@@ -5,12 +5,11 @@ use std::path::Path;
 use syn::visit::Visit;
 use syn::{Attribute, File, ImplItem, Item, ItemFn, ItemImpl, ItemTrait, TraitItem};
 
-use dry_core::NormalizedForm;
+use dry_core::{FingerprintResult, NormalizedForm, below_size_thresholds, fingerprint_tree};
 
 use super::FormParts;
 use super::build_form;
 use super::emit::emit_block;
-use super::fingerprint::fingerprint_tree;
 use super::kind_from_test;
 use super::placeholders::PlaceholderMap;
 use super::suppress::span_is_ignored;
@@ -111,7 +110,7 @@ impl Extractor<'_> {
         bind_signature(sig, &mut placeholders);
         let tree = emit_block(block, &mut placeholders);
         let fp = fingerprint_tree(&tree);
-        if below_thresholds(fp.node_count, start, end, self.min_nodes, self.min_lines) {
+        if below_size_thresholds(fp.node_count, start, end, self.min_nodes, self.min_lines) {
             return;
         }
         self.push_form(name, start, end, is_test, fp, placeholders.ident_trace);
@@ -123,7 +122,7 @@ impl Extractor<'_> {
         start: u32,
         end: u32,
         is_test: bool,
-        fp: super::fingerprint::FingerprintResult,
+        fp: FingerprintResult,
         ident_trace: Vec<String>,
     ) {
         let id = *self.next_id;
@@ -141,17 +140,6 @@ impl Extractor<'_> {
             ident_trace,
         }));
     }
-}
-
-const fn below_thresholds(
-    node_count: u32,
-    start: u32,
-    end: u32,
-    min_nodes: u32,
-    min_lines: u32,
-) -> bool {
-    let line_count = end.saturating_sub(start).saturating_add(1);
-    node_count < min_nodes || line_count < min_lines
 }
 
 fn bind_signature(sig: &syn::Signature, placeholders: &mut PlaceholderMap) {

@@ -12,10 +12,11 @@ description: >-
 
 | Crate | Role |
 | --- | --- |
-| [`crates/dry-core`](../../../crates/dry-core) | Language-agnostic domain, walk, config, compare, reporters — **no** AST deps |
-| [`crates/dry-rs`](../../../crates/dry-rs) | CLI + Rust `syn` normalizer implementing `LanguageNormalizer` |
+| [`crates/dry-core`](../../../crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner — **no** AST deps |
+| [`crates/dry-rs`](../../../crates/dry-rs) | Rust `syn` normalizer implementing `LanguageNormalizer` |
+| [`crates/dry-go`](../../../crates/dry-go) | Go Tree-sitter normalizer implementing `LanguageNormalizer` |
 
-Future language adapters belong in new crates that reuse `dry-core` comparison.
+Language adapters belong in dedicated crates that reuse `dry-core` comparison.
 
 ## Pipeline
 

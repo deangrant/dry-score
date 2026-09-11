@@ -16,10 +16,8 @@
 
 mod emit;
 mod extract;
-mod fingerprint;
 mod placeholders;
 mod suppress;
-mod tree;
 
 use std::path::Path;
 

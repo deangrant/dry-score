@@ -6,7 +6,7 @@ fingerprints, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
-The shipped CLI is **`dry-rs`**.
+The shipped CLIs are **`dry-rs`** (Rust) and **`dry-go`** (Go).
 
 ## Requirements
 
@@ -167,12 +167,24 @@ Contributor conventions: [AGENTS.md](AGENTS.md).
 
 | Crate | Role |
 | --- | --- |
-| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, reporters (no AST deps) |
-| [`crates/dry-rs`](crates/dry-rs) | CLI and Rust `syn` adapter |
+| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner, reporters (no AST deps) |
+| [`crates/dry-rs`](crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
+| [`crates/dry-go`](crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 
-Future language adapters implement `LanguageNormalizer` and reuse `dry-core`
+Language adapters implement `LanguageNormalizer` and reuse `dry-core`
 comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
 and module map.
+
+### Go (`dry-go`)
+
+```bash
+cargo build --release -p dry-go
+./target/release/dry-go path/to/module
+```
+
+`dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
+`// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
+grammar at build time); the adapter itself is Rust.
 
 ## License
 
