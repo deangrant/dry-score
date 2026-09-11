@@ -37,6 +37,8 @@ impl std::error::Error for NormalizeError {}
 pub struct NormalizeOutcome {
     /// Forms extracted from the file (already size-filtered by the adapter).
     pub forms: Vec<NormalizedForm>,
+    /// Non-fatal adapter warnings (for example partial CST recovery).
+    pub warnings: Vec<String>,
 }
 
 /// Language-specific normalizer that emits [`NormalizedForm`] values.

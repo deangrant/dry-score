@@ -1,8 +1,8 @@
 # Architecture document
 
 dry-score detects **structural clones** in source code. It compares normalized
-AST forms—not raw text—scores pairs with Jaccard similarity (set overlap over
-subtree fingerprints), and routes findings into agentic tiers for CI and
+AST forms—not raw text—scores pairs with multiset Jaccard similarity over
+subtree fingerprint bags, and routes findings into agentic tiers for CI and
 automation. It is a duplication detector. It is not a style linter or a
 complexity scorer.
 
@@ -140,11 +140,15 @@ flowchart TD
 
 ### Matching
 
-Identical fingerprint sets score `1.0`. Identifier traces then label the clone
+Identical fingerprint bags score `1.0`. Identifier traces then label the clone
 as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
-fingerprint index and connected-component near-miss Jaccard (Type-3; score is
-the minimum edge Jaccard in the component). Production and test forms
-(`FormKind`) never pair. Findings sort most exact to least exact.
+fingerprint index and connected-component near-miss multiset Jaccard (Type-3;
+score is the minimum edge Jaccard in the component; window uses total bag size
+`Σ` counts). Production and test forms (`FormKind`) never pair. Findings sort
+most exact to least exact.
+
+JSON reports serialize fingerprints as a map from hash string/number to count
+(BREAKING versus the former unique-hash set).
 
 ### Tiers
 
@@ -169,7 +173,7 @@ Pipeline entry: [`analyze`](../../crates/dry-core/src/analyze.rs).
 | Config | [`config.rs`](../../crates/dry-core/src/config.rs) | TOML load, walk-up discover, threshold validate, `OutputFormat` |
 | Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer`, `NormalizeOutcome`, `NormalizeError` |
 | Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss, sort |
-| Jaccard | [`compare/jaccard.rs`](../../crates/dry-core/src/compare/jaccard.rs) | Set similarity |
+| Jaccard | [`compare/jaccard.rs`](../../crates/dry-core/src/compare/jaccard.rs) | Multiset similarity (`Σ min / Σ max`) |
 | Classify | [`compare/classify.rs`](../../crates/dry-core/src/compare/classify.rs) | `CloneType` and `Tier` from score and idents |
 | Domain | [`domain/`](../../crates/dry-core/src/domain/mod.rs) | `NormalizedForm`, `Finding`, spans, summary, enums |
 | Report | [`report/`](../../crates/dry-core/src/report/mod.rs) | Text and JSON envelopes |
@@ -186,11 +190,12 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Flag apply | [`cli/apply.rs`](../../crates/dry-core/src/cli/apply.rs) | One-flag appliers and config overlays |
 | Runner | [`runner.rs`](../../crates/dry-rs/src/runner.rs) | Thin Rust wrapper around `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-rs/src/normalize/mod.rs) | `RustNormalizer` / `LanguageNormalizer` |
-| Extract | [`normalize/extract.rs`](../../crates/dry-rs/src/normalize/extract.rs) | Named forms from items, impls, and trait defaults |
+| Extract | [`normalize/extract/`](../../crates/dry-rs/src/normalize/extract/) | Named forms from items, impls, trait defaults, and closures (`$closure:L{line}`) |
+| Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand to expr children; others keep token-tree shape |
 | Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission (expr, pat, lit, mac, ops) |
 | Expr wrap | [`normalize/emit/expr/wrap.rs`](../../crates/dry-rs/src/normalize/emit/expr/wrap.rs) | Recursive emit helpers (optional, unary, block, pair, range) |
 | Shared emit | [`normalize/emit/shared.rs`](../../crates/dry-rs/src/normalize/emit/shared.rs) | Pure helpers only (must not import `expr`) |
-| Fingerprint | [`norm/fingerprint.rs`](../../crates/dry-core/src/norm/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint set |
+| Fingerprint | [`norm/fingerprint.rs`](../../crates/dry-core/src/norm/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint bag (hash → count) |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` |
 | Placeholders | [`placeholders.rs`](../../crates/dry-core/src/placeholders.rs) | Positional ident renaming |
 | Tree | [`norm/tree.rs`](../../crates/dry-core/src/norm/tree.rs) | `NormNode` leaf and branch |
@@ -206,7 +211,7 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | ---- | ---- | ----- |
 | Runner | [`runner.rs`](../../crates/dry-go/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
-| Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Tree-sitter + `tree-sitter-go` |
+| Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; soft `has_error` + partial CST |
 | Extract | [`normalize/extract.rs`](../../crates/dry-go/src/normalize/extract.rs) | Funcs, methods, `func_literal` |
 | Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode` |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` |
@@ -259,8 +264,8 @@ read under the chosen roots—not remote code execution.
 
 ## Verification and agent layout
 
-Run full local gates (fmt, Clippy, deny, audit, test, dry-rs self-scan with
-`findings=0`):
+Run full local gates (fmt, Clippy, deny, audit, test, dry-rs self-scan and
+dry-go dogfood scan with `findings=0`):
 
 ```bash
 ./scripts/verify.sh full
@@ -272,6 +277,9 @@ For a faster loop (fmt, Clippy, test only):
 ./scripts/verify.sh lite
 ```
 
+The dry-go gate scans [`crates/dry-go/dogfood/`](../../crates/dry-go/dogfood/)
+(unique non-clone corpus) because production Go sources outside fixtures are
+absent from this repo.
 Detail: [verify-gates](../skills/verify-gates/SKILL.md), or run `/verify`.
 
 Agent support lives under `.agents/`:

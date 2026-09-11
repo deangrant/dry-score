@@ -50,11 +50,14 @@ impl LanguageNormalizer for GoNormalizer {
         next_id: &mut u64,
     ) -> Result<NormalizeOutcome, NormalizeError> {
         if file_is_ignored(source, MARKER) {
-            return Ok(NormalizeOutcome { forms: Vec::new() });
+            return Ok(NormalizeOutcome {
+                forms: Vec::new(),
+                warnings: Vec::new(),
+            });
         }
-        let tree = parse_source(source)?;
+        let parsed = parse_source(source)?;
         let forms = extract_forms(
-            tree.root_node(),
+            parsed.tree.root_node(),
             path,
             source.as_bytes(),
             source,
@@ -62,7 +65,11 @@ impl LanguageNormalizer for GoNormalizer {
             self.min_lines,
             next_id,
         );
-        Ok(NormalizeOutcome { forms })
+        let mut warnings = Vec::new();
+        if parsed.has_error {
+            warnings.push("parse error in Go source; extracted from partial CST".to_owned());
+        }
+        Ok(NormalizeOutcome { forms, warnings })
     }
 }
 

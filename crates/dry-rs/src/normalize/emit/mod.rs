@@ -39,7 +39,7 @@ fn emit_item_or_macro(stmt: &Stmt, placeholders: &mut PlaceholderMap) -> NormNod
 fn classify_item_macro(stmt: &Stmt, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     match stmt {
         Stmt::Item(_) => Some(NormNode::leaf("item")),
-        Stmt::Macro(mac) => Some(emit_macro(&mac.mac, placeholders)),
+        Stmt::Macro(mac) => Some(emit_macro(&mac.mac, placeholders, emit_expr)),
         _ => None,
     }
 }
@@ -78,8 +78,8 @@ mod tests {
         }};
         let node = emit_block(&block, &mut placeholders);
         assert_eq!(node.label, "block");
-        assert!(node.children.iter().any(|c| c.label.starts_with("macro:assert:")));
-        assert!(node.children.iter().any(|c| c.label.starts_with("macro:println:")));
+        assert!(node.children.iter().any(|c| c.label.starts_with("macro_expand:assert:")));
+        assert!(node.children.iter().any(|c| c.label.starts_with("macro_expand:println:")));
         assert!(node.children.iter().any(|c| c.label == "item"));
         let local: syn::Stmt = parse_quote!(let x = 1;);
         assert!(classify_item_macro(&local, &mut placeholders).is_none());

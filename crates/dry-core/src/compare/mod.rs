@@ -14,10 +14,10 @@ pub use jaccard::jaccard;
 
 /// Compares normalized forms and returns findings above `threshold`.
 ///
-/// Exact fingerprint-set matches become n-ary findings at score `1.0`.
-/// Remaining forms are linked by Jaccard via an inverted fingerprint index into
-/// multi-member Type-3 components (connected components; score is the minimum
-/// edge Jaccard). Production and test forms (`FormKind`) never pair.
+/// Exact fingerprint-bag matches become n-ary findings at score `1.0`.
+/// Remaining forms are linked by multiset Jaccard via an inverted fingerprint
+/// index into multi-member Type-3 components (connected components; score is
+/// the minimum edge Jaccard). Production and test forms (`FormKind`) never pair.
 #[must_use]
 pub fn compare(forms: &[NormalizedForm], threshold: f64) -> Vec<Finding> {
     let mut claimed = BTreeSet::new();
@@ -57,7 +57,7 @@ fn push_exact_clusters(
     threshold: f64,
     findings: &mut Vec<Finding>,
 ) {
-    let mut by_set: BTreeMap<&BTreeSet<u64>, Vec<usize>> = BTreeMap::new();
+    let mut by_set: BTreeMap<&BTreeMap<u64, u32>, Vec<usize>> = BTreeMap::new();
     for &idx in indices {
         by_set.entry(&forms[idx].fingerprints).or_default().push(idx);
     }
@@ -147,14 +147,14 @@ fn unclaimed_sorted<'a>(
         .iter()
         .filter(|f| !claimed.contains(&f.id) && !f.fingerprints.is_empty())
         .collect();
-    remaining.sort_by_key(|f| (f.fingerprints.len(), f.id));
+    remaining.sort_by_key(|f| (f.bag_size(), f.id));
     remaining
 }
 
 fn build_fingerprint_index(remaining: &[&NormalizedForm]) -> HashMap<u64, Vec<usize>> {
     let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
     for (idx, form) in remaining.iter().enumerate() {
-        for &fp in &form.fingerprints {
+        for &fp in form.fingerprints.keys() {
             index.entry(fp).or_default().push(idx);
         }
     }
@@ -170,7 +170,7 @@ fn collect_near_miss_edges(
     let mut edges = Vec::new();
     let mut seen_pairs = BTreeSet::new();
     for (left_idx, left) in remaining.iter().enumerate() {
-        for &fp in &left.fingerprints {
+        for &fp in left.fingerprints.keys() {
             let Some(postings) = index.get(&fp) else {
                 continue;
             };
@@ -254,7 +254,7 @@ fn near_miss_eligible(
 ) -> bool {
     !claimed.contains(&right.id)
         && left.kind == right.kind
-        && within_jaccard_window(left.fingerprints.len(), right.fingerprints.len(), threshold)
+        && within_jaccard_window(left.bag_size(), right.bag_size(), threshold)
 }
 
 fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {

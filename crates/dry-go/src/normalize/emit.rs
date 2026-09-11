@@ -42,7 +42,7 @@ fn emit_children(
 }
 
 fn should_skip(node: Node<'_>) -> bool {
-    !node.is_named() || node.kind() == "comment"
+    !node.is_named() || node.kind() == "comment" || node.is_error() || node.is_missing()
 }
 
 fn try_emit_leaf(
@@ -139,7 +139,7 @@ mod tests {
         let src = "package p\nfunc add(a int, b int) int { return a + b }\n";
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(src).expect("parse");
-        let root = tree.root_node();
+        let root = tree.tree.root_node();
         let mut func = None;
         let mut c = root.walk();
         for child in root.children(&mut c) {
@@ -173,7 +173,7 @@ func demo() {
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(src).expect("parse");
         let mut placeholders = PlaceholderMap::default();
-        let _ = emit_node(tree.root_node(), src.as_bytes(), &mut placeholders);
+        let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
         assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
     }
 }

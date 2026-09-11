@@ -1,8 +1,8 @@
 # dry-score
 
 dry-score finds **structural clones** in Rust source. It compares normalized AST
-forms—not raw text—scores pairs with Jaccard similarity over subtree
-fingerprints, and routes findings into agentic tiers for CI and automation.
+forms—not raw text—scores pairs with multiset Jaccard similarity over subtree
+fingerprint bags, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
@@ -79,7 +79,8 @@ Defaults match the table below.
 | `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
 Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults.
+with the defaults. The default list includes `tests`, so integration-test
+duplication is not scanned unless you override `walk.exclude`.
 
 ## How detection works
 
@@ -93,15 +94,20 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
   Type-1 versus Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control flow, operators, and patterns keep structural labels.
-- Macros fingerprint as name + delimiter + token-tree shape (not expansion).
-- Each subtree hashes to a `u64` (fixed FNV-1a); the set of those hashes is the
-  fingerprint.
+- Macros: an allowlist (`vec`, `assert*`, `format`, `print*`/`eprint*`, `dbg`,
+  `matches`, …) expands to normalized expression children; other macros keep
+  name + delimiter + token-tree shape.
+- Closures are extracted as named forms (`{parent}.$closure:L{line}`), in
+  addition to remaining embedded in the parent body.
+- Each subtree hashes to a `u64` (fixed FNV-1a); the bag of those hashes
+  (hash → multiplicity) is the fingerprint.
 
 ### Match
 
-1. Identical fingerprint sets score `1.0` (exact buckets).
+1. Identical fingerprint bags score `1.0` (exact buckets).
 2. Remaining forms use an inverted fingerprint index and connected-component
-   near-miss Jaccard (with a set-size window; score is the minimum edge Jaccard).
+   near-miss multiset Jaccard (window on total bag size; score is the minimum
+   edge Jaccard).
 3. Production and test forms (`FormKind`) never pair.
 4. Findings sort most exact → least exact.
 
@@ -159,7 +165,7 @@ Local parity:
 
 ```bash
 ./scripts/verify.sh lite   # fmt, clippy, test
-./scripts/verify.sh full   # lite + deny, audit, dry-rs findings=0
+./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go dogfood findings=0
 ```
 
 Contributor conventions: [AGENTS.md](AGENTS.md).
@@ -185,7 +191,9 @@ cargo build --release -p dry-go
 
 `dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
 `// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
-grammar at build time); the adapter itself is Rust.
+grammar at build time); recoverable syntax errors soft-fail with a partial CST
+warning. Full verify and CI dogfood scan
+[`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter itself is Rust.
 
 ## License
 

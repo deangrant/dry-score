@@ -3,7 +3,7 @@
 //! Digests use a fixed FNV-1a 64-bit protocol so fingerprints are stable across
 //! toolchains and CI runners.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 
 use super::tree::NormNode;
 
@@ -12,19 +12,19 @@ const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
 /// FNV-1a 64-bit prime.
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
-/// Fingerprint set and node count for a normalized tree.
+/// Fingerprint bag and node count for a normalized tree.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FingerprintResult {
-    /// All subtree hashes.
-    pub fingerprints: BTreeSet<u64>,
+    /// Subtree hash → multiplicity (bag / multiset).
+    pub fingerprints: BTreeMap<u64, u32>,
     /// Total nodes in the tree.
     pub node_count: u32,
 }
 
-/// Hashes every subtree and returns the fingerprint set.
+/// Hashes every subtree and returns the fingerprint bag.
 #[must_use]
 pub fn fingerprint_tree(root: &NormNode) -> FingerprintResult {
-    let mut fingerprints = BTreeSet::new();
+    let mut fingerprints = BTreeMap::new();
     let mut node_count = 0_u32;
     let _ = hash_node(root, &mut fingerprints, &mut node_count);
     FingerprintResult {
@@ -33,14 +33,14 @@ pub fn fingerprint_tree(root: &NormNode) -> FingerprintResult {
     }
 }
 
-fn hash_node(node: &NormNode, fingerprints: &mut BTreeSet<u64>, node_count: &mut u32) -> u64 {
+fn hash_node(node: &NormNode, fingerprints: &mut BTreeMap<u64, u32>, node_count: &mut u32) -> u64 {
     *node_count = node_count.saturating_add(1);
     let mut child_hashes = Vec::with_capacity(node.children.len());
     for child in &node.children {
         child_hashes.push(hash_node(child, fingerprints, node_count));
     }
     let digest = hash_labeled_subtree(&node.label, &child_hashes);
-    fingerprints.insert(digest);
+    *fingerprints.entry(digest).or_default() += 1;
     digest
 }
 
@@ -75,13 +75,26 @@ mod tests {
         );
         let result = fingerprint_tree(&tree);
         assert_eq!(result.node_count, 3);
-        let expected: BTreeSet<u64> = [
-            0x9f82_3fc5_49e8_4070,
-            0x9f85_a5c5_49eb_2399,
-            0x6d21_5d42_1f39_7d61,
+        let expected: BTreeMap<u64, u32> = [
+            (0x9f82_3fc5_49e8_4070, 1),
+            (0x9f85_a5c5_49eb_2399, 1),
+            (0x6d21_5d42_1f39_7d61, 1),
         ]
         .into_iter()
         .collect();
         assert_eq!(result.fingerprints, expected);
+    }
+
+    #[test]
+    fn repeated_identical_subtrees_increase_counts() {
+        let leaf = NormNode::leaf("id0");
+        let tree = NormNode::branch("block", vec![leaf.clone(), leaf]);
+        let result = fingerprint_tree(&tree);
+        let leaf_only = fingerprint_tree(&NormNode::leaf("id0"));
+        let leaf_hash = leaf_only.fingerprints.keys().copied().next();
+        assert_eq!(
+            leaf_hash.and_then(|h| result.fingerprints.get(&h).copied()),
+            Some(2)
+        );
     }
 }

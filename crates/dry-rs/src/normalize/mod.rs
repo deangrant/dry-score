@@ -9,10 +9,11 @@
 //! - Literals become kind tags (`lit_int`, `lit_str`, …).
 //! - Control-flow and operator nodes keep their structural labels.
 //! - Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.
-//! - Macros fingerprint as name + delimiter + token-tree structure (not expansion).
+//! - Macros: allowlisted invocations expand to normalized expr children;
+//!   others fingerprint as name + delimiter + token-tree structure.
 //! - Trait default method bodies are extracted as named forms.
-//! - Each subtree hashes to a `u64` via fixed FNV-1a; all subtree hashes form
-//!   the fingerprint set.
+//! - Each subtree hashes to a `u64` via fixed FNV-1a; subtree hashes form a
+//!   fingerprint bag (hash → multiplicity).
 
 mod emit;
 mod extract;
@@ -56,12 +57,18 @@ impl LanguageNormalizer for RustNormalizer {
         next_id: &mut u64,
     ) -> Result<NormalizeOutcome, NormalizeError> {
         if file_is_ignored(source) {
-            return Ok(NormalizeOutcome { forms: Vec::new() });
+            return Ok(NormalizeOutcome {
+                forms: Vec::new(),
+                warnings: Vec::new(),
+            });
         }
         let file = syn::parse_file(source)
             .map_err(|err| NormalizeError::new(format!("parse error: {err}")))?;
         let forms = extract_forms(&file, path, source, self.min_nodes, self.min_lines, next_id);
-        Ok(NormalizeOutcome { forms })
+        Ok(NormalizeOutcome {
+            forms,
+            warnings: Vec::new(),
+        })
     }
 }
 
@@ -92,8 +99,8 @@ pub struct FormParts {
     pub kind: FormKind,
     /// Structural node count.
     pub node_count: u32,
-    /// Fingerprint set.
-    pub fingerprints: std::collections::BTreeSet<u64>,
+    /// Fingerprint bag (hash → multiplicity).
+    pub fingerprints: std::collections::BTreeMap<u64, u32>,
     /// Raw identifier occurrence sequence (repeats included).
     pub ident_trace: Vec<String>,
 }
@@ -147,7 +154,7 @@ mod tests {
             end_line: 2,
             kind: FormKind::Production,
             node_count: 3,
-            fingerprints: std::collections::BTreeSet::new(),
+            fingerprints: std::collections::BTreeMap::new(),
             ident_trace: Vec::new(),
         });
         assert_eq!(form.name, "n");

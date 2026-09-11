@@ -89,6 +89,9 @@ fn normalize_one(
     match normalizer.normalize_file(path, &source, next_id) {
         Ok(outcome) => {
             *files_scanned = files_scanned.saturating_add(1);
+            for warning in outcome.warnings {
+                warnings.push(format!("{}: {warning}", path.display()));
+            }
             forms.extend(outcome.forms);
         }
         Err(err) => warnings.push(format!("{}: {err}", path.display())),
@@ -149,7 +152,7 @@ mod tests {
     use super::*;
     use crate::domain::{FormKind, FormSpan};
     use crate::ports::{NormalizeError, NormalizeOutcome};
-    use std::collections::BTreeSet;
+    use std::collections::BTreeMap;
     use std::fs;
     use std::path::Path;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -178,9 +181,10 @@ mod tests {
                     span: FormSpan::new(1, 5),
                     kind: FormKind::Production,
                     node_count: 5,
-                    fingerprints: BTreeSet::from([1, 2, 3]),
+                    fingerprints: BTreeMap::from([(1, 1), (2, 1), (3, 1)]),
                     ident_trace: vec!["x".to_owned()],
                 }],
+                warnings: Vec::new(),
             })
         }
     }

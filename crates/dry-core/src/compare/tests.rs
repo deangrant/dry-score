@@ -1,6 +1,15 @@
 use super::*;
 use crate::domain::{FormKind, FormSpan};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+fn bag(fps: &[u64]) -> BTreeMap<u64, u32> {
+    let mut map = BTreeMap::new();
+    for &fp in fps {
+        *map.entry(fp).or_default() += 1;
+    }
+    map
+}
 
 fn form(id: u64, nodes: u32, fps: &[u64], idents: &[&str]) -> NormalizedForm {
     form_kind(id, nodes, fps, idents, FormKind::Production)
@@ -14,7 +23,7 @@ fn form_kind(id: u64, nodes: u32, fps: &[u64], idents: &[&str], kind: FormKind) 
         span: FormSpan::new(1, 10),
         kind,
         node_count: nodes,
-        fingerprints: fps.iter().copied().collect(),
+        fingerprints: bag(fps),
         ident_trace: idents.iter().map(|s| (*s).to_owned()).collect(),
     }
 }
@@ -130,10 +139,30 @@ fn idents_match_empty_indices() {
 }
 
 #[test]
-fn colliding_bucket_keys_without_identical_sets() {
-    // 1 ^ 2 == 3, so these share a bucket key but not a fingerprint set.
-    let forms = [form(1, 10, &[1, 2], &["x"]), form(2, 10, &[3], &["y"])];
-    assert!(compare(&forms, 0.99).is_empty());
+fn differing_multiplicity_is_not_exact_match() {
+    let left = NormalizedForm {
+        id: 1,
+        name: "f1".to_owned(),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: 10,
+        fingerprints: BTreeMap::from([(1, 2), (2, 1)]),
+        ident_trace: vec!["x".to_owned()],
+    };
+    let right = NormalizedForm {
+        id: 2,
+        name: "f2".to_owned(),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: 10,
+        fingerprints: BTreeMap::from([(1, 1), (2, 1)]),
+        ident_trace: vec!["y".to_owned()],
+    };
+    let findings = compare(&[left, right], 0.5);
+    assert!(findings.iter().all(|f| f.score < 1.0));
+    assert!(!findings.is_empty());
 }
 
 #[test]

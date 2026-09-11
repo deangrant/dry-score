@@ -77,7 +77,7 @@ fn try_emit_control_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Opti
 fn try_emit_macro(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     // dry-rs:ignore. CC-split expr dispatch shells; parallel shape is intentional.
     match expr {
-        Expr::Macro(mac) => Some(emit_macro(&mac.mac, placeholders)),
+        Expr::Macro(mac) => Some(emit_macro(&mac.mac, placeholders, emit_expr)),
         _ => None,
     }
 }

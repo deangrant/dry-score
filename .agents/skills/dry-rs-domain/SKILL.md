@@ -30,15 +30,21 @@ discover files → parse/normalize → fingerprint index → match → report
 - Literals → kind tags (`lit_int`, `lit_str`, …).
 - Fingerprints must stay **toolchain-stable** and **location-independent**
   (do not bake spans or absolute paths into fingerprints).
+- Fingerprints are a **bag** (`BTreeMap<u64, u32>`): repeated identical subtrees
+  increase counts; scoring uses multiset Jaccard.
+- Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
+  test/cfg attrs (language-idiomatic vs Go `_test.go`).
+- Allowlisted macros expand to normalized expr children (`macro_expand:…`);
+  others keep token-tree emission.
 - Emit helpers: recursive expr wrappers live under `normalize/emit/expr/`;
   [`shared.rs`](../../../crates/dry-rs/src/normalize/emit/shared.rs) stays pure
   (must not import `expr`).
 
 ## Matching
 
-1. Exact buckets (identical fingerprint sets) → score `1.0`
-2. Near-miss via inverted index + Jaccard connected components; production vs
-   test forms never pair
+1. Exact buckets (identical fingerprint bags) → score `1.0`
+2. Near-miss via inverted index + multiset Jaccard connected components
+   (window on `Σ` counts); production vs test forms never pair
 3. Sort most exact → least exact
 
 ## Labels
@@ -54,7 +60,11 @@ discover files → parse/normalize → fingerprint index → match → report
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
+- Default `walk.exclude` includes `tests` (replacement list, not merge).
 - Walker does **not** follow symlinks; a symlink analysis root errors.
+- Go parse soft-fails on `has_error` and records `NormalizeOutcome.warnings`.
+- Full verify includes dry-go dogfood under
+  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/).
 
 ## Suppressions
 

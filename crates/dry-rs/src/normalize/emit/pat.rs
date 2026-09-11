@@ -108,7 +108,7 @@ fn try_emit_named_path(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<N
 fn try_emit_pat_macro_const(pat: &Pat, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     // dry-rs:ignore. CC-split pattern dispatch shells; parallel shape is intentional.
     Some(match pat {
-        Pat::Macro(mac) => emit_macro(&mac.mac, placeholders),
+        Pat::Macro(mac) => emit_macro(&mac.mac, placeholders, super::emit_expr),
         Pat::Const(expr_const) => NormNode::branch(
             "pat_const",
             vec![emit_block(&expr_const.block, placeholders)],

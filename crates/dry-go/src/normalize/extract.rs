@@ -91,7 +91,8 @@ fn try_walk_literal(node: Node<'_>, parent_name: Option<&str>, ctx: &mut Extract
 fn walk_children(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if !child.is_named() || child.kind() == "comment" {
+        if !child.is_named() || child.kind() == "comment" || child.is_error() || child.is_missing()
+        {
             continue;
         }
         walk_forms(child, parent_name, ctx);
@@ -257,7 +258,7 @@ func (t T) Value(n int) int {
         let value_tree = parse_source(value).expect("parse");
         let mut next_id = 1;
         let pointer_forms = extract_forms(
-            pointer_tree.root_node(),
+            pointer_tree.tree.root_node(),
             Path::new("run.go"),
             pointer.as_bytes(),
             pointer,
@@ -266,7 +267,7 @@ func (t T) Value(n int) int {
             &mut next_id,
         );
         let value_forms = extract_forms(
-            value_tree.root_node(),
+            value_tree.tree.root_node(),
             Path::new("value.go"),
             value.as_bytes(),
             value,
@@ -300,7 +301,7 @@ func kept(n int) int {
         let tree = parse_source(src).expect("parse");
         let mut next_id = 1;
         let forms = extract_forms(
-            tree.root_node(),
+            tree.tree.root_node(),
             Path::new("kept.go"),
             src.as_bytes(),
             src,
@@ -325,7 +326,7 @@ func (x interface{}) Run(n int) int {
         let tree = parse_source(src).expect("parse");
         let mut next_id = 1;
         let forms = extract_forms(
-            tree.root_node(),
+            tree.tree.root_node(),
             Path::new("iface.go"),
             src.as_bytes(),
             src,

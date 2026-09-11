@@ -1,6 +1,6 @@
 //! Normalized form IR consumed by the comparison engine.
 
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
@@ -22,16 +22,29 @@ pub struct NormalizedForm {
     pub kind: FormKind,
     /// Count of structural nodes used for extract-time size filtering.
     pub node_count: u32,
-    /// Structural fingerprint set (subtree hashes).
-    pub fingerprints: BTreeSet<u64>,
+    /// Structural fingerprint bag (subtree hash → multiplicity).
+    pub fingerprints: BTreeMap<u64, u32>,
     /// Raw identifier spellings in normalization visit order; repeats included.
     pub ident_trace: Vec<String>,
 }
 
 impl NormalizedForm {
-    /// XOR-fold of fingerprint elements for exact-match bucketing.
+    /// Fold of fingerprint hash and multiplicity for exact-match bucketing.
+    ///
+    /// Mixes count so duplicate subtree hashes do not cancel under XOR.
     #[must_use]
     pub fn bucket_key(&self) -> u64 {
-        self.fingerprints.iter().fold(0_u64, |acc, fp| acc ^ fp)
+        self.fingerprints.iter().fold(0_u64, |acc, (fp, count)| {
+            let mixed = fp.wrapping_mul(0x9e37_79b9_7f4a_7c15).wrapping_add(u64::from(*count));
+            acc ^ mixed
+        })
+    }
+
+    /// Total multiset size (`Σ` counts) used for Jaccard windowing.
+    #[must_use]
+    pub fn bag_size(&self) -> usize {
+        self.fingerprints
+            .values()
+            .fold(0_usize, |acc, &count| acc.saturating_add(count as usize))
     }
 }
