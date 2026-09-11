@@ -48,25 +48,28 @@ struct Extractor<'a> {
 
 impl<'ast> Visit<'ast> for Extractor<'_> {
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        let is_test = self.in_test_cfg || has_test_attr(&node.attrs);
+        let is_test = self.in_test_cfg || has_test_attr(&node.attrs) || has_cfg_test(&node.attrs);
         self.maybe_emit_fn(&node.sig.ident.to_string(), &node.block, &node.sig, is_test);
         syn::visit::visit_item_fn(self, node);
     }
 
     fn visit_item_impl(&mut self, node: &'ast ItemImpl) {
+        let impl_is_test = self.in_test_cfg || has_cfg_test(&node.attrs);
         let impl_name = impl_type_name(node);
         for item in &node.items {
             let ImplItem::Fn(method) = item else {
                 continue;
             };
             let name = format!("{impl_name}::{}", method.sig.ident);
-            let is_test = self.in_test_cfg || has_test_attr(&method.attrs);
+            let is_test =
+                impl_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
             self.maybe_emit_fn(&name, &method.block, &method.sig, is_test);
         }
         syn::visit::visit_item_impl(self, node);
     }
 
     fn visit_item_trait(&mut self, node: &'ast ItemTrait) {
+        let trait_is_test = self.in_test_cfg || has_cfg_test(&node.attrs);
         let trait_name = node.ident.to_string();
         for item in &node.items {
             let TraitItem::Fn(method) = item else {
@@ -76,7 +79,8 @@ impl<'ast> Visit<'ast> for Extractor<'_> {
                 continue;
             };
             let name = format!("{trait_name}::{}", method.sig.ident);
-            let is_test = self.in_test_cfg || has_test_attr(&method.attrs);
+            let is_test =
+                trait_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
             self.maybe_emit_fn(&name, block, &method.sig, is_test);
         }
         syn::visit::visit_item_trait(self, node);
@@ -162,7 +166,9 @@ fn bind_sig_input(input: &syn::FnArg, placeholders: &mut PlaceholderMap) {
 }
 
 fn has_test_attr(attrs: &[Attribute]) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident("test"))
+    attrs
+        .iter()
+        .any(|attr| attr.path().segments.last().is_some_and(|seg| seg.ident == "test"))
 }
 
 fn has_cfg_test(attrs: &[Attribute]) -> bool {
@@ -173,14 +179,31 @@ fn attr_is_cfg_test(attr: &Attribute) -> bool {
     if !attr.path().is_ident("cfg") {
         return false;
     }
-    let mut is_test = false;
-    let _ = attr.parse_nested_meta(|meta| {
-        if meta.path.is_ident("test") {
-            is_test = true;
+    let Ok(meta) = attr.parse_args::<syn::Meta>() else {
+        return false;
+    };
+    meta_has_positive_test(&meta, true)
+}
+
+/// True when `test` appears under positive polarity in a cfg predicate tree.
+fn meta_has_positive_test(meta: &syn::Meta, positive: bool) -> bool {
+    match meta {
+        syn::Meta::Path(path) => path.is_ident("test") && positive,
+        syn::Meta::List(list) if list.path.is_ident("not") => meta_list_any(list, !positive),
+        syn::Meta::List(list) if list.path.is_ident("any") || list.path.is_ident("all") => {
+            meta_list_any(list, positive)
         }
-        Ok(())
-    });
-    is_test
+        syn::Meta::List(_) | syn::Meta::NameValue(_) => false,
+    }
+}
+
+fn meta_list_any(list: &syn::MetaList, positive: bool) -> bool {
+    let Ok(items) = list.parse_args_with(
+        syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+    ) else {
+        return false;
+    };
+    items.iter().any(|child| meta_has_positive_test(child, positive))
 }
 
 fn impl_type_name(node: &ItemImpl) -> String {
@@ -295,5 +318,92 @@ mod tests {
                 .any(|f| f.name == "T::tested_default" && f.kind == dry_core::FormKind::Test)
         );
         assert!(!forms.iter().any(|f| f.name == "T::required"));
+    }
+
+    fn extract(source: &str) -> Vec<NormalizedForm> {
+        let parsed = parse_file(source);
+        assert!(parsed.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts parse ok")]
+        let file = parsed.expect("parse");
+        let mut next_id = 1;
+        extract_forms(&file, Path::new("t.rs"), source, 5, 3, &mut next_id)
+    }
+
+    fn form_kind(forms: &[NormalizedForm], name: &str) -> Option<dry_core::FormKind> {
+        forms.iter().find(|f| f.name == name).map(|f| f.kind)
+    }
+
+    #[test]
+    fn classifies_tokio_test_and_cfg_test_fn() {
+        let source = r"
+            fn production_twin() {
+                let a = 1;
+                let b = a + 1;
+                let c = b + 1;
+            }
+            #[tokio::test]
+            async fn tokio_case() {
+                let a = 1;
+                let b = a + 1;
+                let c = b + 1;
+            }
+            #[cfg(test)]
+            fn cfg_helper() {
+                let a = 1;
+                let b = a + 1;
+                let c = b + 1;
+            }
+        ";
+        let forms = extract(source);
+        assert_eq!(
+            form_kind(&forms, "production_twin"),
+            Some(dry_core::FormKind::Production)
+        );
+        assert_eq!(
+            form_kind(&forms, "tokio_case"),
+            Some(dry_core::FormKind::Test)
+        );
+        assert_eq!(
+            form_kind(&forms, "cfg_helper"),
+            Some(dry_core::FormKind::Test)
+        );
+    }
+
+    #[test]
+    fn classifies_compound_cfg_modules_and_not_test() {
+        let source = r#"
+            #[cfg(any(test, feature = "x"))]
+            mod any_tests {
+                fn inside_any() {
+                    let a = 1;
+                    let b = a + 1;
+                    let c = b + 1;
+                }
+            }
+            #[cfg(not(test))]
+            fn not_test_helper() {
+                let a = 1;
+                let b = a + 1;
+                let c = b + 1;
+            }
+        "#;
+        let forms = extract(source);
+        assert_eq!(
+            form_kind(&forms, "inside_any"),
+            Some(dry_core::FormKind::Test)
+        );
+        assert_eq!(
+            form_kind(&forms, "not_test_helper"),
+            Some(dry_core::FormKind::Production)
+        );
+
+        let any_cfg: syn::Attribute = syn::parse_quote!(#[cfg(any(test, feature = "x"))]);
+        assert!(attr_is_cfg_test(&any_cfg));
+        let all_cfg: syn::Attribute = syn::parse_quote!(#[cfg(all(test, unix))]);
+        assert!(attr_is_cfg_test(&all_cfg));
+        let not_cfg: syn::Attribute = syn::parse_quote!(#[cfg(not(test))]);
+        assert!(!attr_is_cfg_test(&not_cfg));
+        let feature_named_test: syn::Attribute = syn::parse_quote!(#[cfg(feature = "test")]);
+        assert!(!attr_is_cfg_test(&feature_named_test));
     }
 }
