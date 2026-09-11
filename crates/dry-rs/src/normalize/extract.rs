@@ -111,7 +111,6 @@ impl Extractor<'_> {
             return;
         }
         let mut placeholders = PlaceholderMap::default();
-        bind_signature(sig, &mut placeholders);
         let tree = emit_block(block, &mut placeholders);
         let fp = fingerprint_tree(&tree);
         if below_size_thresholds(fp.node_count, start, end, self.min_nodes, self.min_lines) {
@@ -143,25 +142,6 @@ impl Extractor<'_> {
             fingerprints: fp.fingerprints,
             ident_trace,
         }));
-    }
-}
-
-fn bind_signature(sig: &syn::Signature, placeholders: &mut PlaceholderMap) {
-    for input in &sig.inputs {
-        bind_sig_input(input, placeholders);
-    }
-}
-
-fn bind_sig_input(input: &syn::FnArg, placeholders: &mut PlaceholderMap) {
-    match input {
-        syn::FnArg::Receiver(_) => {
-            let _ = placeholders.placeholder("self");
-        }
-        syn::FnArg::Typed(pat_type) => {
-            if let syn::Pat::Ident(ident) = &*pat_type.pat {
-                let _ = placeholders.placeholder(&ident.ident.to_string());
-            }
-        }
     }
 }
 
@@ -405,5 +385,31 @@ mod tests {
         assert!(!attr_is_cfg_test(&not_cfg));
         let feature_named_test: syn::Attribute = syn::parse_quote!(#[cfg(feature = "test")]);
         assert!(!attr_is_cfg_test(&feature_named_test));
+    }
+
+    #[test]
+    fn unused_params_do_not_shift_body_placeholders() {
+        let source = r"
+            fn with_unused(unused: i32, x: i32) {
+                let y = x + 1;
+                let z = y + 2;
+                let w = z + 3;
+            }
+            fn without_unused(x: i32) {
+                let y = x + 1;
+                let z = y + 2;
+                let w = z + 3;
+            }
+        ";
+        let forms = extract(source);
+        let left = forms.iter().find(|f| f.name == "with_unused");
+        let right = forms.iter().find(|f| f.name == "without_unused");
+        assert!(left.is_some());
+        assert!(right.is_some());
+        #[expect(clippy::expect_used, reason = "test asserts forms exist")]
+        let left = left.expect("with_unused");
+        #[expect(clippy::expect_used, reason = "test asserts forms exist")]
+        let right = right.expect("without_unused");
+        assert_eq!(left.fingerprints, right.fingerprints);
     }
 }

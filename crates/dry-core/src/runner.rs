@@ -144,6 +144,7 @@ mod tests {
     use std::time::{SystemTime, UNIX_EPOCH};
 
     fn temp_dir() -> std::path::PathBuf {
+        // dry-rs:ignore. Per-module test temp-dir helper; shared shape is intentional.
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir().join(format!("dry-core-runner-{stamp}"));
         assert!(fs::create_dir_all(&base).is_ok());

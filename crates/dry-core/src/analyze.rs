@@ -29,7 +29,8 @@ pub fn analyze(
 ) -> Result<AnalysisResult, String> {
     let options = WalkOptions::new(config.walk.extensions.clone(), config.walk.exclude.clone());
     let files = collect_source_files(roots, &options).map_err(|err| err.to_string())?;
-    let (forms, warnings, files_scanned) = normalize_sources(&files, normalizer);
+    let (forms, warnings, files_scanned) =
+        normalize_sources(&files, normalizer, config.walk.max_file_bytes);
     let forms_compared = u32::try_from(forms.len()).unwrap_or(u32::MAX);
     let findings = compare(&forms, config.gate.threshold);
     let summary = build_summary(
@@ -45,6 +46,7 @@ pub fn analyze(
 fn normalize_sources(
     files: &[PathBuf],
     normalizer: &impl LanguageNormalizer,
+    max_file_bytes: u64,
 ) -> (Vec<NormalizedForm>, Vec<String>, u32) {
     let mut forms = Vec::new();
     let mut warnings = Vec::new();
@@ -54,6 +56,7 @@ fn normalize_sources(
         normalize_one(
             path,
             normalizer,
+            max_file_bytes,
             &mut next_id,
             &mut forms,
             &mut warnings,
@@ -66,11 +69,16 @@ fn normalize_sources(
 fn normalize_one(
     path: &Path,
     normalizer: &impl LanguageNormalizer,
+    max_file_bytes: u64,
     next_id: &mut u64,
     forms: &mut Vec<NormalizedForm>,
     warnings: &mut Vec<String>,
     files_scanned: &mut u32,
 ) {
+    if let Err(warning) = check_file_size(path, max_file_bytes) {
+        warnings.push(warning);
+        return;
+    }
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(err) => {
@@ -85,6 +93,18 @@ fn normalize_one(
         }
         Err(err) => warnings.push(format!("{}: {err}", path.display())),
     }
+}
+
+fn check_file_size(path: &Path, max_file_bytes: u64) -> Result<(), String> {
+    let meta = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
+    let len = meta.len();
+    if len > max_file_bytes {
+        return Err(format!(
+            "{}: file exceeds walk.max_file_bytes ({len} > {max_file_bytes})",
+            path.display()
+        ));
+    }
+    Ok(())
 }
 
 fn build_summary(
@@ -245,6 +265,27 @@ mod tests {
             &StubNormalizer { fail: false },
         );
         assert!(err.is_err());
+    }
+
+    #[test]
+    fn analyze_skips_oversized_files_with_warning() {
+        let path = temp_rs("oversized");
+        let root = path.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        assert!(fs::write(&path, "fn a() { let x = 1; }\n").is_ok());
+        let mut config = Config::default();
+        config.walk.max_file_bytes = 1;
+        let result = analyze(
+            std::slice::from_ref(&root),
+            &config,
+            &StubNormalizer { fail: false },
+        );
+        assert!(result.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
+        let result = result.expect("ok");
+        assert_eq!(result.report.summary.files_scanned, 0);
+        assert_eq!(result.report.summary.forms_compared, 0);
+        assert!(result.report.parse_warnings.iter().any(|w| w.contains("max_file_bytes")));
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

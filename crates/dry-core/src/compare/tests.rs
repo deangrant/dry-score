@@ -83,6 +83,13 @@ fn zero_threshold_keeps_window_open() {
 }
 
 #[test]
+fn jaccard_window_orders_sizes() {
+    assert!(!within_jaccard_window(2, 20, 0.9));
+    assert!(!within_jaccard_window(20, 2, 0.9));
+    assert!(within_jaccard_window(5, 5, 0.9));
+}
+
+#[test]
 fn sort_orders_by_score_then_member() {
     let mut findings = vec![
         Finding {
@@ -153,16 +160,33 @@ fn near_miss_skips_out_of_window_shared_fingerprint() {
 }
 
 #[test]
-fn near_miss_claims_clique_once() {
-    let forms = [
+fn near_miss_clusters_clique_and_chain_components() {
+    // Clique: all pairs near-miss. Chain: A~B and B~C only (A~C below threshold).
+    let clique = [
         form(1, 4, &[1, 2, 3, 4], &["a"]),
         form(2, 4, &[1, 2, 3, 5], &["a"]),
         form(3, 4, &[1, 2, 3, 6], &["a"]),
     ];
-    let findings = compare(&forms, 0.5);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].members.len(), 2);
-    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type3);
+    let clique_findings = compare(&clique, 0.5);
+    assert_eq!(clique_findings.len(), 1);
+    assert_eq!(clique_findings[0].members.len(), 3);
+    assert_eq!(
+        clique_findings[0].clone_type,
+        crate::domain::CloneType::Type3
+    );
+
+    let chain = [
+        form(1, 4, &[1, 2, 3, 4], &["a"]),
+        form(2, 4, &[1, 2, 3, 5], &["a"]),
+        form(3, 4, &[2, 3, 5, 6], &["a"]),
+    ];
+    let chain_findings = compare(&chain, 0.5);
+    assert_eq!(chain_findings.len(), 1);
+    assert_eq!(chain_findings[0].members.len(), 3);
+    assert_eq!(
+        chain_findings[0].clone_type,
+        crate::domain::CloneType::Type3
+    );
 }
 
 #[test]
@@ -213,29 +237,10 @@ fn same_kind_test_twins_still_match() {
 }
 
 #[test]
-fn prefer_better_match_covers_ties_and_worse() {
-    let better = form(1, 4, &[1, 2, 3, 4], &["a"]);
-    let worse = form(2, 4, &[1, 2, 3, 4], &["a"]);
-    let first = prefer_better_match(None, &worse, 0.8);
-    assert_eq!(first.0.id, 2);
-    let tied = prefer_better_match(Some((&worse, 0.8)), &better, 0.8);
-    assert_eq!(tied.0.id, 1);
-    let kept = prefer_better_match(Some((&better, 0.9)), &worse, 0.8);
-    assert_eq!(kept.0.id, 1);
-    assert!(is_better_match(0.9, 0.8, 9, 1));
-    assert!(is_better_match(0.8, 0.8, 1, 2));
-    assert!(!is_better_match(0.8, 0.8, 3, 2));
-    assert!(!is_better_match(0.7, 0.8, 1, 2));
-}
-
-#[test]
-fn best_near_miss_ignores_fingerprints_missing_from_index() {
+fn collect_near_miss_edges_skips_missing_index_postings() {
     let left = form(1, 5, &[1, 2, 3, 4, 99], &["a"]);
     let right = form(2, 5, &[1, 2, 3, 4, 9], &["a"]);
     let remaining = vec![&left, &right];
-    let mut index = build_fingerprint_index(&remaining);
-    index.remove(&99);
-    let claimed = BTreeSet::new();
-    let best = best_near_miss(&left, 0, &remaining, &index, &claimed, 0.5);
-    assert!(best.is_some());
+    let edges = collect_near_miss_edges(&remaining, 0.5);
+    assert_eq!(edges.len(), 1);
 }

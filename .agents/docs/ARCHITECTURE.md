@@ -114,8 +114,8 @@ A `dry-rs` run proceeds as follows:
 3. Call [`analyze`](../../crates/dry-core/src/analyze.rs):
    1. Collect sources with
       [`walk::collect_source_files`](../../crates/dry-core/src/walk.rs).
-   2. Normalize each file (warn on unreadable paths; emit no forms when the
-      file opts out).
+   2. Normalize each file (skip files over `walk.max_file_bytes` with a
+      warning; warn on unreadable paths; emit no forms when the file opts out).
    3. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
       `gate.threshold`.
    4. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
@@ -142,8 +142,9 @@ flowchart TD
 
 Identical fingerprint sets score `1.0`. Identifier traces then label the clone
 as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
-fingerprint index and greedy near-miss Jaccard (Type-3). Production and test
-forms (`FormKind`) never pair. Findings sort most exact to least exact.
+fingerprint index and connected-component near-miss Jaccard (Type-3; score is
+the minimum edge Jaccard in the component). Production and test forms
+(`FormKind`) never pair. Findings sort most exact to least exact.
 
 ### Tiers
 
@@ -164,7 +165,7 @@ Pipeline entry: [`analyze`](../../crates/dry-core/src/analyze.rs).
 | Area | Path | Role |
 | ---- | ---- | ---- |
 | Orchestration | [`analyze.rs`](../../crates/dry-core/src/analyze.rs) | Walk → normalize → compare → summary → `Report` |
-| Walk | [`walk.rs`](../../crates/dry-core/src/walk.rs) | Recursive discovery; no symlink follow; exclude by path component |
+| Walk | [`walk.rs`](../../crates/dry-core/src/walk.rs) | Recursive discovery; no symlink follow; symlink roots error; exclude by path component |
 | Config | [`config.rs`](../../crates/dry-core/src/config.rs) | TOML load, walk-up discover, threshold validate, `OutputFormat` |
 | Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer`, `NormalizeOutcome`, `NormalizeError` |
 | Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss, sort |
@@ -236,6 +237,7 @@ flowchart TB
 | Fingerprints are toolchain-stable and location-independent | Do not bake spans or absolute paths into hashes |
 | `emit/shared` must not import `expr` | Avoids a shared↔expr cycle; recursive wraps live in `expr/wrap` |
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
+| Symlink analysis roots are rejected | Avoids silent empty runs when the root itself is a link |
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 | Workspace members are `dry-core`, `dry-rs`, and `dry-go` | Update this document if you add or rename crates |
@@ -251,9 +253,9 @@ flowchart TB
 ## Trust boundary
 
 `dry-rs` is a local analysis tool. The binary does not open network sockets or
-execute untrusted code. The walker does not follow file or directory symlinks.
-Residual risk is local filesystem read under the chosen roots—not remote code
-execution.
+execute untrusted code. The walker does not follow file or directory symlinks,
+and rejects a symlink as an analysis root. Residual risk is local filesystem
+read under the chosen roots—not remote code execution.
 
 ## Verification and agent layout
 

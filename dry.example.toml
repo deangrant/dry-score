@@ -20,3 +20,5 @@ exclude = ["target", ".git", "fixtures", "tests"]
 min_nodes = 10
 # Drop forms spanning fewer source lines than this.
 min_lines = 3
+# Skip source files larger than this many bytes (not read or normalized).
+max_file_bytes = 2097152

@@ -89,6 +89,9 @@ pub struct WalkConfig {
     /// Minimum source lines for a form.
     #[serde(default = "default_min_lines")]
     pub min_lines: u32,
+    /// Skip source files larger than this many bytes (not read or normalized).
+    #[serde(default = "default_max_file_bytes")]
+    pub max_file_bytes: u64,
 }
 
 impl Default for WalkConfig {
@@ -98,6 +101,7 @@ impl Default for WalkConfig {
             exclude: default_excludes(),
             min_nodes: default_min_nodes(),
             min_lines: default_min_lines(),
+            max_file_bytes: default_max_file_bytes(),
         }
     }
 }
@@ -121,6 +125,10 @@ const fn default_min_nodes() -> u32 {
 
 const fn default_min_lines() -> u32 {
     3
+}
+
+const fn default_max_file_bytes() -> u64 {
+    2_097_152
 }
 
 /// Root configuration loaded from `dry.toml`.
@@ -309,6 +317,7 @@ mod tests {
     }
 
     fn temp_dir(label: &str) -> PathBuf {
+        // dry-rs:ignore. Per-module test temp-dir helper; shared shape is intentional.
         let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
         let base = std::env::temp_dir().join(format!("dry-rs-{label}-{stamp}"));
         assert!(fs::create_dir_all(&base).is_ok());

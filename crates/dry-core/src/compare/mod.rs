@@ -15,9 +15,9 @@ pub use jaccard::jaccard;
 /// Compares normalized forms and returns findings above `threshold`.
 ///
 /// Exact fingerprint-set matches become n-ary findings at score `1.0`.
-/// Remaining forms are matched with Jaccard via an inverted fingerprint index;
-/// each form is claimed by at most one near-miss pair (greedy best match).
-/// Production and test forms (`FormKind`) are never paired with each other.
+/// Remaining forms are linked by Jaccard via an inverted fingerprint index into
+/// multi-member Type-3 components (connected components; score is the minimum
+/// edge Jaccard). Production and test forms (`FormKind`) never pair.
 #[must_use]
 pub fn compare(forms: &[NormalizedForm], threshold: f64) -> Vec<Finding> {
     let mut claimed = BTreeSet::new();
@@ -119,20 +119,22 @@ fn near_miss_findings(
     threshold: f64,
 ) -> Vec<Finding> {
     let remaining = unclaimed_sorted(forms, claimed);
-    let index = build_fingerprint_index(&remaining);
+    let edges = collect_near_miss_edges(&remaining, threshold);
+    let components = near_miss_components(remaining.len(), &edges);
     let mut findings = Vec::new();
-    for (left_idx, left) in remaining.iter().enumerate() {
-        if claimed.contains(&left.id) {
+    for (member_idxs, score) in components {
+        if member_idxs.len() < 2 {
             continue;
         }
-        let Some((right, score)) =
-            best_near_miss(left, left_idx, &remaining, &index, claimed, threshold)
-        else {
-            continue;
-        };
-        findings.push(near_miss_finding(left, right, score, threshold));
-        claimed.insert(left.id);
-        claimed.insert(right.id);
+        findings.push(near_miss_component_finding(
+            &remaining,
+            &member_idxs,
+            score,
+            threshold,
+        ));
+        for &idx in &member_idxs {
+            claimed.insert(remaining[idx].id);
+        }
     }
     findings
 }
@@ -159,44 +161,77 @@ fn build_fingerprint_index(remaining: &[&NormalizedForm]) -> HashMap<u64, Vec<us
     index
 }
 
-fn best_near_miss<'a>(
-    left: &'a NormalizedForm,
-    left_idx: usize,
-    remaining: &[&'a NormalizedForm],
-    index: &HashMap<u64, Vec<usize>>,
-    claimed: &BTreeSet<u64>,
+fn collect_near_miss_edges(
+    remaining: &[&NormalizedForm],
     threshold: f64,
-) -> Option<(&'a NormalizedForm, f64)> {
-    let mut seen = BTreeSet::new();
-    let mut best: Option<(&NormalizedForm, f64)> = None;
-    for &fp in &left.fingerprints {
-        let Some(postings) = index.get(&fp) else {
-            continue;
-        };
-        for &right_idx in postings {
-            if skip_near_miss_candidate(right_idx, left_idx, &mut seen) {
+) -> Vec<(usize, usize, f64)> {
+    let index = build_fingerprint_index(remaining);
+    let claimed = BTreeSet::new();
+    let mut edges = Vec::new();
+    let mut seen_pairs = BTreeSet::new();
+    for (left_idx, left) in remaining.iter().enumerate() {
+        for &fp in &left.fingerprints {
+            let Some(postings) = index.get(&fp) else {
                 continue;
+            };
+            for &right_idx in postings {
+                if right_idx <= left_idx || !seen_pairs.insert((left_idx, right_idx)) {
+                    continue;
+                }
+                let right = remaining[right_idx];
+                let Some(score) = scored_near_miss(left, right, &claimed, threshold) else {
+                    continue;
+                };
+                edges.push((left_idx, right_idx, score));
             }
-            best = consider_near_miss(left, remaining[right_idx], claimed, threshold, best);
         }
     }
-    best
+    edges
 }
 
-fn skip_near_miss_candidate(right_idx: usize, left_idx: usize, seen: &mut BTreeSet<usize>) -> bool {
-    right_idx <= left_idx || !seen.insert(right_idx)
+fn near_miss_components(n: usize, edges: &[(usize, usize, f64)]) -> Vec<(Vec<usize>, f64)> {
+    let mut parent: Vec<usize> = (0..n).collect();
+    let mut min_edge: Vec<Option<f64>> = vec![None; n];
+    for &(a, b, score) in edges {
+        let ra = find_root(&mut parent, a);
+        let rb = find_root(&mut parent, b);
+        let merged = [min_edge[ra], min_edge[rb], Some(score)]
+            .into_iter()
+            .flatten()
+            .fold(score, f64::min);
+        if ra != rb {
+            parent[rb] = ra;
+            min_edge[rb] = None;
+        }
+        min_edge[ra] = Some(merged);
+    }
+    group_components(n, &mut parent, &min_edge)
 }
 
-fn consider_near_miss<'a>(
-    left: &'a NormalizedForm,
-    right: &'a NormalizedForm,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-    best: Option<(&'a NormalizedForm, f64)>,
-) -> Option<(&'a NormalizedForm, f64)> {
-    scored_near_miss(left, right, claimed, threshold)
-        .map(|score| prefer_better_match(best, right, score))
-        .or(best)
+fn find_root(parent: &mut [usize], mut i: usize) -> usize {
+    while parent[i] != i {
+        parent[i] = parent[parent[i]];
+        i = parent[i];
+    }
+    i
+}
+
+fn group_components(
+    n: usize,
+    parent: &mut [usize],
+    min_edge: &[Option<f64>],
+) -> Vec<(Vec<usize>, f64)> {
+    let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    for i in 0..n {
+        groups.entry(find_root(parent, i)).or_default().push(i);
+    }
+    groups
+        .into_iter()
+        .filter_map(|(root, members)| {
+            let score = min_edge[root]?;
+            (members.len() >= 2).then_some((members, score))
+        })
+        .collect()
 }
 
 fn scored_near_miss(
@@ -226,50 +261,39 @@ fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {
     (score >= threshold && score < 1.0).then_some(score)
 }
 
-fn prefer_better_match<'a>(
-    best: Option<(&'a NormalizedForm, f64)>,
-    candidate: &'a NormalizedForm,
-    score: f64,
-) -> (&'a NormalizedForm, f64) {
-    let Some((best_form, best_score)) = best else {
-        return (candidate, score);
-    };
-    if is_better_match(score, best_score, candidate.id, best_form.id) {
-        (candidate, score)
-    } else {
-        (best_form, best_score)
-    }
-}
-
-fn is_better_match(score: f64, best_score: f64, candidate_id: u64, best_id: u64) -> bool {
-    match score.total_cmp(&best_score) {
-        std::cmp::Ordering::Greater => true,
-        std::cmp::Ordering::Equal => candidate_id < best_id,
-        std::cmp::Ordering::Less => false,
-    }
-}
-
-fn near_miss_finding(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
+fn near_miss_component_finding(
+    remaining: &[&NormalizedForm],
+    member_idxs: &[usize],
     score: f64,
     threshold: f64,
 ) -> Finding {
+    let mut indices: Vec<usize> = member_idxs.to_vec();
+    indices.sort_unstable();
+    let mut members: Vec<FormMember> = indices
+        .iter()
+        .map(|&i| {
+            FormMember::new(
+                remaining[i].path.clone(),
+                remaining[i].span,
+                remaining[i].name.clone(),
+            )
+        })
+        .collect();
+    members.sort_by(|a, b| (&a.path, a.start_line, &a.name).cmp(&(&b.path, b.start_line, &b.name)));
     Finding {
         clone_type: classify(score, false),
         tier: classify::tier_for(score, threshold),
         score,
-        members: vec![
-            FormMember::new(left.path.clone(), left.span, left.name.clone()),
-            FormMember::new(right.path.clone(), right.span, right.name.clone()),
-        ],
+        members,
     }
 }
 
-fn within_jaccard_window(smaller: usize, larger: usize, threshold: f64) -> bool {
+fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> bool {
     if threshold <= 0.0 {
         return true;
     }
+    let smaller = left_len.min(right_len);
+    let larger = left_len.max(right_len);
     let max_allowed = smaller as f64 / threshold;
     larger as f64 <= max_allowed
 }

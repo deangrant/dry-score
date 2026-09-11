@@ -60,7 +60,7 @@ If you omit `PATH`, dry-rs analyzes `.`.
 
 Walk-up discovery loads `dry.toml` from the current directory or a parent unless
 you pass `--config`. Analysis roots are trusted local trees; the walker does
-**not** follow symlinks.
+**not** follow symlinks, and a symlink root is an error.
 
 ## Configuration
 
@@ -76,6 +76,7 @@ Defaults match the table below.
 | `[walk]` | `exclude` | `["target", ".git", "fixtures", "tests"]` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
+| `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
 Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
 with the defaults.
@@ -99,8 +100,8 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 ### Match
 
 1. Identical fingerprint sets score `1.0` (exact buckets).
-2. Remaining forms use an inverted fingerprint index and greedy near-miss
-   Jaccard (with a set-size window).
+2. Remaining forms use an inverted fingerprint index and connected-component
+   near-miss Jaccard (with a set-size window; score is the minimum edge Jaccard).
 3. Production and test forms (`FormKind`) never pair.
 4. Findings sort most exact → least exact.
 

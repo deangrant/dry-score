@@ -37,7 +37,8 @@ discover files → parse/normalize → fingerprint index → match → report
 ## Matching
 
 1. Exact buckets (identical fingerprint sets) → score `1.0`
-2. Near-miss via inverted index + Jaccard; production vs test forms never pair
+2. Near-miss via inverted index + Jaccard connected components; production vs
+   test forms never pair
 3. Sort most exact → least exact
 
 ## Labels
@@ -52,8 +53,8 @@ discover files → parse/normalize → fingerprint index → match → report
 - Walk-up discovery loads [`dry.toml`](../../../dry.toml); schema in
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
-  `walk.min_lines`, `walk.exclude`, `output.format`.
-- Walker does **not** follow symlinks.
+  `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
+- Walker does **not** follow symlinks; a symlink analysis root errors.
 
 ## Suppressions
 
