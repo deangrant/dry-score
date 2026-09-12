@@ -99,6 +99,9 @@ mod tests {
     #[test]
     fn render_json_round_trips_version() {
         let json = render_json(&sample_report());
+        assert!(json.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts serialize ok")]
+        let json = json.expect("ok");
         assert!(json.contains("\"version\": \"0.1\""));
         assert!(json.contains("\"tool\": \"dry-rs\""));
     }

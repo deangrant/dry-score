@@ -61,10 +61,7 @@ pub fn emit_report(
             emit_text(report);
             Ok(())
         }
-        OutputFormat::Json => {
-            emit_json(report);
-            Ok(())
-        }
+        OutputFormat::Json => emit_json(report),
         OutputFormat::Both => emit_both(report, json_out),
     }
 }
@@ -73,13 +70,14 @@ fn emit_text(report: &Report) {
     print_out(&render_text(report));
 }
 
-fn emit_json(report: &Report) {
-    print_out(&render_json(report));
+fn emit_json(report: &Report) -> Result<(), CliError> {
+    print_out(&json_report(report)?);
+    Ok(())
 }
 
 fn emit_both(report: &Report, json_out: Option<&Path>) -> Result<(), CliError> {
     print_out(&render_text(report));
-    let json = render_json(report);
+    let json = json_report(report)?;
     if let Some(path) = json_out {
         fs::write(path, json).map_err(|err| CliError {
             message: format!("failed to write {}: {err}", path.display()),
@@ -90,6 +88,14 @@ fn emit_both(report: &Report, json_out: Option<&Path>) -> Result<(), CliError> {
         print_err(&json);
     }
     Ok(())
+}
+
+fn json_report(report: &Report) -> Result<String, CliError> {
+    render_json(report).map_err(|message| CliError {
+        message: format!("failed to render JSON report: {message}"),
+        exit: ExitCode::from(2),
+        print_stdout: false,
+    })
 }
 
 /// Writes `message` to stdout.

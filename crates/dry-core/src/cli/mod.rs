@@ -106,6 +106,8 @@ struct RawFlags {
     format: Option<OutputFormat>,
     min_nodes: Option<u32>,
     min_lines: Option<u32>,
+    extensions: Option<Vec<String>>,
+    exclude: Option<Vec<String>>,
     fail_on: Option<bool>,
     json_out: Option<PathBuf>,
 }
@@ -149,6 +151,8 @@ pub fn help_text(bin: &str) -> String {
          --format text|json|both\n\
          --min-nodes N\n\
          --min-lines N\n\
+         --extensions EXT[,EXT]...\n\
+         --exclude NAME[,NAME]...\n\
          --fail-on-findings\n\
          --no-fail-on-findings\n\
          --json-out PATH\n\

@@ -53,6 +53,8 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--format text\|json\|both` | Human summary, JSON envelope, or both (default `text`) |
 | `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
 | `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
+| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots) |
+| `--exclude NAME[,NAME]...` | Replace `walk.exclude` (comma-separated directory names) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
 | `--json-out PATH` | When `--format both`, write JSON to this path |
@@ -138,7 +140,7 @@ comments and string substrings do not count.
 | --- | --- | --- |
 | `0` | Success (including `--help`) | Nothing required |
 | `1` | Findings present and fail-on-findings is on | Inspect the report; fix clones or disable fail-on for report-only runs |
-| `2` | Usage, config, analyze, or write error | Fix flags or `dry.toml`; check paths and permissions |
+| `2` | Usage, config, analyze, write, or JSON serialize error | Fix flags or `dry.toml`; check paths and permissions. JSON emit fails closed (no alternate error schema). |
 
 ## Fixtures
 

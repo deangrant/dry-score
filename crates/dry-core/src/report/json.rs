@@ -3,36 +3,35 @@
 use crate::report::Report;
 
 /// Serializes a report to pretty JSON.
-#[must_use]
-pub fn render_json(report: &Report) -> String {
-    fallback_json(serialize_report(report))
-}
-
-fn serialize_report(report: &Report) -> Result<String, String> {
+///
+/// # Errors
+///
+/// Returns a string when serialization fails. Callers should fail the run
+/// rather than inventing an alternate error schema.
+pub fn render_json(report: &Report) -> Result<String, String> {
     serde_json::to_string_pretty(report).map_err(|err| err.to_string())
-}
-
-fn fallback_json(result: Result<String, String>) -> String {
-    result.unwrap_or_else(|message| serde_json::json!({ "error": message }).to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::domain::ReportSummary;
+    use crate::report::Report;
 
     #[test]
-    fn fallback_json_covers_error_arm() {
-        let json = fallback_json(Err("boom".to_owned()));
-        assert!(json.contains("boom"));
-    }
-
-    #[test]
-    fn fallback_json_escapes_special_characters() {
-        let message = "say \"hi\" \\ and\nnewline";
-        let json = fallback_json(Err(message.to_owned()));
-        #[expect(clippy::expect_used, reason = "test asserts valid JSON")]
-        let parsed: serde_json::Value =
-            serde_json::from_str(&json).expect("fallback must be valid JSON");
-        assert_eq!(parsed["error"], message);
+    fn render_json_ok_for_empty_report() {
+        let report = Report::new(
+            "dry-core",
+            0.85,
+            Vec::new(),
+            ReportSummary::default(),
+            Vec::new(),
+        );
+        let json = render_json(&report);
+        assert!(json.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts serialize ok")]
+        let json = json.expect("ok");
+        assert!(json.contains("\"version\""));
+        assert!(json.contains("\"tool\""));
     }
 }

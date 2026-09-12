@@ -79,6 +79,8 @@ fn try_apply_mins(
     match arg {
         "--min-nodes" => Some(apply_min_nodes(args, raw)),
         "--min-lines" => Some(apply_min_lines(args, raw)),
+        "--extensions" => Some(apply_extensions(args, raw)),
+        "--exclude" => Some(apply_exclude(args, raw)),
         _ => None,
     }
 }
@@ -162,6 +164,24 @@ fn apply_min_lines(
     Ok(())
 }
 
+fn apply_extensions(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    raw.extensions = Some(parse_csv_list(&require_value(args, "--extensions")?));
+    Ok(())
+}
+
+fn apply_exclude(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    raw.exclude = Some(parse_csv_list(&require_value(args, "--exclude")?));
+    Ok(())
+}
+
 fn apply_json_out(
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
@@ -171,7 +191,7 @@ fn apply_json_out(
     Ok(())
 }
 
-pub(super) const fn overlay_cli_onto_config(raw: &RawFlags, config: &mut Config) {
+pub(super) fn overlay_cli_onto_config(raw: &RawFlags, config: &mut Config) {
     overlay_gate_flags(raw, config);
     overlay_output_flags(raw, config);
     overlay_walk_flags(raw, config);
@@ -192,12 +212,18 @@ const fn overlay_output_flags(raw: &RawFlags, config: &mut Config) {
     }
 }
 
-const fn overlay_walk_flags(raw: &RawFlags, config: &mut Config) {
+fn overlay_walk_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(min_nodes) = raw.min_nodes {
         config.walk.min_nodes = min_nodes;
     }
     if let Some(min_lines) = raw.min_lines {
         config.walk.min_lines = min_lines;
+    }
+    if let Some(extensions) = &raw.extensions {
+        config.walk.extensions.clone_from(extensions);
+    }
+    if let Some(exclude) = &raw.exclude {
+        config.walk.exclude.clone_from(exclude);
     }
 }
 
@@ -207,4 +233,12 @@ fn require_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<
 
 fn parse_value<T: std::str::FromStr>(raw: &str, kind: &str) -> Result<T, CliError> {
     raw.parse::<T>().map_err(|_| CliError::usage(format!("invalid {kind}: {raw}")))
+}
+
+fn parse_csv_list(raw: &str) -> Vec<String> {
+    raw.split(',')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+        .map(str::to_owned)
+        .collect()
 }

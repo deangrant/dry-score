@@ -62,6 +62,12 @@ fn parse_errors() {
 }
 
 #[test]
+fn walk_flag_value_required() {
+    assert!(parse(&["--extensions"]).is_err());
+    assert!(parse(&["--exclude"]).is_err());
+}
+
+#[test]
 fn help_exits_success_via_stdout() {
     for flag in ["--help", "-h"] {
         let err = parse(&[flag]);
@@ -91,6 +97,37 @@ fn default_path_is_dot() {
     assert_eq!(parsed.paths, vec![PathBuf::from(".")]);
     assert!(!CliError::usage("x").to_string().is_empty());
     assert!(!help_text("dry-core-test").is_empty());
+}
+
+#[test]
+fn parse_extensions_and_exclude_replace_lists() {
+    let parsed = parse(&["--extensions", "rs, go", "--exclude", "target,vendor"]);
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let parsed = parsed.expect("ok");
+    assert_eq!(
+        parsed.config.walk.extensions,
+        vec!["rs".to_owned(), "go".to_owned()]
+    );
+    assert_eq!(
+        parsed.config.walk.exclude,
+        vec!["target".to_owned(), "vendor".to_owned()]
+    );
+}
+
+#[test]
+fn force_extensions_overrides_cli_extensions() {
+    let parsed = parse_args(
+        args(&["--extensions", "rs"]),
+        &CliOptions {
+            bin_name: "dry-go",
+            force_extensions: Some(vec!["go".to_owned()]),
+        },
+    );
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let parsed = parsed.expect("ok");
+    assert_eq!(parsed.config.walk.extensions, vec!["go".to_owned()]);
 }
 
 #[test]

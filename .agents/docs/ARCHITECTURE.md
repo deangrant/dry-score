@@ -120,6 +120,8 @@ A `dry-rs` run proceeds as follows:
       `gate.threshold`.
    4. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
 4. Emit text and/or JSON. Map `fail_on_findings` to the process exit code.
+      JSON serialize failure fails the run (exit 2); there is no alternate
+      error-object schema.
 
 *Figure: the runner drives analyze; compare splits into exact buckets and
 near-miss Jaccard before emit.*
@@ -255,7 +257,7 @@ flowchart TB
 | ---- | ------- | ---------- |
 | `0` | Success (including `--help`) | Nothing required |
 | `1` | Findings present and fail-on-findings is on | Inspect the report; fix clones or turn off fail-on if you only needed a report |
-| `2` | Usage, config, or hard analysis error | Fix flags or config; see [README.md](../../README.md) |
+| `2` | Usage, config, hard analysis, write, or JSON serialize error | Fix flags or config; see [README.md](../../README.md) |
 
 ## Trust boundary
 
