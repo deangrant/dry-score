@@ -16,7 +16,11 @@ pub fn render_text(report: &Report) -> String {
 }
 
 fn write_header(out: &mut String, report: &Report) {
-    let _ = writeln!(out, "dry-rs report (threshold {:.2})", report.threshold);
+    let _ = writeln!(
+        out,
+        "{} report (threshold {:.2})",
+        report.tool, report.threshold
+    );
     let _ = writeln!(
         out,
         "files={} forms={} findings={} warnings={}\n",

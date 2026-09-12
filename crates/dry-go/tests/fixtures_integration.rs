@@ -18,7 +18,7 @@ fn analyze_fixture(name: &str, threshold: f64) -> Report {
     config.output.format = OutputFormat::Json;
     let normalizer = GoNormalizer::new(config.walk.min_nodes, config.walk.min_lines);
     let roots = vec![fixture_dir(name)];
-    let result = analyze(&roots, &config, &normalizer);
+    let result = analyze(&roots, &config, &normalizer, "dry-go");
     assert!(
         result.is_ok(),
         "analyze failed: {}",

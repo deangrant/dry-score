@@ -92,19 +92,43 @@ fn push_cluster_if_pair(
     if group.len() < 2 {
         return;
     }
-    let members = members_from_indices(forms, group);
-    let idents_identical = idents_match(forms, group);
+    let mut by_idents: BTreeMap<&[String], Vec<usize>> = BTreeMap::new();
+    for &idx in group {
+        by_idents.entry(forms[idx].ident_trace.as_slice()).or_default().push(idx);
+    }
+    let mut leftovers = Vec::new();
+    for ident_group in by_idents.values() {
+        if ident_group.len() >= 2 {
+            push_exact_finding(forms, ident_group, claimed, threshold, true, findings);
+        } else {
+            leftovers.extend(ident_group.iter().copied());
+        }
+    }
+    if leftovers.len() >= 2 {
+        push_exact_finding(forms, &leftovers, claimed, threshold, false, findings);
+    }
+}
+
+fn push_exact_finding(
+    forms: &[NormalizedForm],
+    group: &[usize],
+    claimed: &mut BTreeSet<u64>,
+    threshold: f64,
+    idents_identical: bool,
+    findings: &mut Vec<Finding>,
+) {
     findings.push(Finding {
         clone_type: classify(1.0, idents_identical),
         tier: classify::tier_for(1.0, threshold),
         score: 1.0,
-        members,
+        members: members_from_indices(forms, group),
     });
     for &idx in group {
         claimed.insert(forms[idx].id);
     }
 }
 
+#[cfg(test)]
 fn idents_match(forms: &[NormalizedForm], indices: &[usize]) -> bool {
     let Some(first) = indices.first() else {
         return true;

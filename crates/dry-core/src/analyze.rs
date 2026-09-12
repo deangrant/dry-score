@@ -26,6 +26,7 @@ pub fn analyze(
     roots: &[PathBuf],
     config: &Config,
     normalizer: &impl LanguageNormalizer,
+    tool: &str,
 ) -> Result<AnalysisResult, String> {
     let options = WalkOptions::new(config.walk.extensions.clone(), config.walk.exclude.clone());
     let files = collect_source_files(roots, &options).map_err(|err| err.to_string())?;
@@ -39,7 +40,7 @@ pub fn analyze(
         forms_compared,
         u32::try_from(warnings.len()).unwrap_or(u32::MAX),
     );
-    let report = Report::new(config.gate.threshold, findings, summary, warnings);
+    let report = Report::new(tool, config.gate.threshold, findings, summary, warnings);
     Ok(AnalysisResult { report })
 }
 
@@ -207,6 +208,7 @@ mod tests {
             std::slice::from_ref(&root),
             &config,
             &StubNormalizer { fail: false },
+            "dry-core",
         );
         assert!(result.is_ok());
         #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
@@ -224,6 +226,7 @@ mod tests {
             std::slice::from_ref(&root),
             &Config::default(),
             &StubNormalizer { fail: true },
+            "dry-core",
         );
         assert!(result.is_ok());
         #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
@@ -246,6 +249,7 @@ mod tests {
             std::slice::from_ref(&root),
             &Config::default(),
             &StubNormalizer { fail: false },
+            "dry-core",
         );
         #[cfg(unix)]
         {
@@ -267,6 +271,7 @@ mod tests {
             &[missing],
             &Config::default(),
             &StubNormalizer { fail: false },
+            "dry-core",
         );
         assert!(err.is_err());
     }
@@ -282,6 +287,7 @@ mod tests {
             std::slice::from_ref(&root),
             &config,
             &StubNormalizer { fail: false },
+            "dry-core",
         );
         assert!(result.is_ok());
         #[expect(clippy::expect_used, reason = "test asserts analyze ok")]

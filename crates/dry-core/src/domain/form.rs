@@ -31,12 +31,15 @@ pub struct NormalizedForm {
 impl NormalizedForm {
     /// Fold of fingerprint hash and multiplicity for exact-match bucketing.
     ///
-    /// Mixes count so duplicate subtree hashes do not cancel under XOR.
+    /// Mixes count so duplicate subtree hashes do not cancel, and uses an
+    /// order-stable multiply-xor fold over the sorted bag to reduce structured
+    /// XOR collisions (exactness remains guarded by bag equality).
     #[must_use]
     pub fn bucket_key(&self) -> u64 {
+        const FOLD_PRIME: u64 = 0x0000_0100_0000_01b3;
         self.fingerprints.iter().fold(0_u64, |acc, (fp, count)| {
             let mixed = fp.wrapping_mul(0x9e37_79b9_7f4a_7c15).wrapping_add(u64::from(*count));
-            acc ^ mixed
+            acc.wrapping_mul(FOLD_PRIME) ^ mixed
         })
     }
 

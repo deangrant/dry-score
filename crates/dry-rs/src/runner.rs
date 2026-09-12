@@ -66,10 +66,17 @@ mod tests {
             paths: vec![base.clone()],
             config,
             json_out: Some(base.join("from-run.json")),
+            bin_name: "dry-rs",
         };
         assert!(run(&args).is_ok());
 
-        let report = Report::new(0.85, Vec::new(), ReportSummary::default(), Vec::new());
+        let report = Report::new(
+            "dry-rs",
+            0.85,
+            Vec::new(),
+            ReportSummary::default(),
+            Vec::new(),
+        );
         assert!(emit_report(&report, OutputFormat::Text, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Json, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Both, None).is_ok());
@@ -90,6 +97,7 @@ mod tests {
             paths: vec![base.clone()],
             config,
             json_out: Some(base.join("missing").join("out.json")),
+            bin_name: "dry-rs",
         };
         assert!(run(&args).is_err());
         let _ = fs::remove_dir_all(base);
@@ -107,6 +115,7 @@ mod tests {
             paths: vec![base.clone()],
             config,
             json_out: None,
+            bin_name: "dry-rs",
         };
         let code = run(&args);
         assert!(code.is_ok());
@@ -119,6 +128,7 @@ mod tests {
             paths: vec![std::path::PathBuf::from("/no/such/dry-rs-runner-root")],
             config: Config::default(),
             json_out: None,
+            bin_name: "dry-rs",
         };
         assert!(run(&args).is_err());
     }

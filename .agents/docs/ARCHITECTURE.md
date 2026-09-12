@@ -240,6 +240,7 @@ flowchart TB
 | `dry-core` has no AST dependencies | Adapters own parsing; the core stays reusable |
 | Adapters implement `LanguageNormalizer`; scoring stays in `dry-core` | Do not fork Jaccard or tier rules in an adapter |
 | Fingerprints are toolchain-stable and location-independent | Do not bake spans or absolute paths into hashes |
+| Digests are 64-bit FNV-1a | Birthday collisions are theoretically possible (rare false similarity); accepted for local analysis |
 | `emit/shared` must not import `expr` | Avoids a shared↔expr cycle; recursive wraps live in `expr/wrap` |
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
 | Symlink analysis roots are rejected | Avoids silent empty runs when the root itself is a link |

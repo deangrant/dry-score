@@ -56,6 +56,45 @@ fn exact_bucket_clusters_identical_sets() {
 }
 
 #[test]
+fn exact_cluster_splits_type1_from_renamed_singleton() {
+    let forms = [
+        form(1, 10, &[1, 2, 3], &["x"]),
+        form(2, 10, &[1, 2, 3], &["x"]),
+        form(3, 10, &[1, 2, 3], &["y"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type1);
+    assert_eq!(findings[0].members.len(), 2);
+}
+
+#[test]
+fn exact_cluster_emits_type1_and_type2_leftovers() {
+    let forms = [
+        form(1, 10, &[1, 2, 3], &["a"]),
+        form(2, 10, &[1, 2, 3], &["a"]),
+        form(3, 10, &[1, 2, 3], &["b"]),
+        form(4, 10, &[1, 2, 3], &["c"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 2);
+    assert!(findings.iter().any(|f| f.clone_type == crate::domain::CloneType::Type1));
+    assert!(findings.iter().any(|f| f.clone_type == crate::domain::CloneType::Type2));
+    let type1 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type1);
+    assert!(type1.is_some_and(|f| f.members.len() == 2));
+    let type2 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type2);
+    assert!(type2.is_some_and(|f| f.members.len() == 2));
+}
+
+#[test]
+fn distinct_bags_get_distinct_bucket_keys() {
+    let left = form(1, 10, &[1, 2], &["x"]);
+    let right = form(2, 10, &[3], &["y"]);
+    assert_ne!(left.bucket_key(), right.bucket_key());
+    assert_ne!(left.fingerprints, right.fingerprints);
+}
+
+#[test]
 fn empty_fingerprints_never_match() {
     let forms = vec![form(1, 1, &[], &[]), form(2, 1, &[], &[])];
     assert!(compare(&forms, 0.5).is_empty());

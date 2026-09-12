@@ -37,6 +37,10 @@ pub fn tier_for(score: f64, threshold: f64) -> Tier {
         return Tier::Advisory;
     }
     // Below configured gate; compare should not emit these.
+    debug_assert!(
+        score >= threshold,
+        "compare must not emit below-threshold scores"
+    );
     Tier::Advisory
 }
 
@@ -61,6 +65,12 @@ mod tests {
         assert_eq!(tier_for(0.99, 0.8), Tier::AutoRefactor);
         assert_eq!(tier_for(0.9, 0.8), Tier::ReviewFirst);
         assert_eq!(tier_for(0.82, 0.8), Tier::Advisory);
-        assert_eq!(tier_for(0.82, 0.85), Tier::Advisory);
+        // Below threshold (including empty advisory band when threshold ≥ 0.85).
+        // Debug builds assert on this dead path instead of returning.
+        #[cfg(not(debug_assertions))]
+        {
+            assert_eq!(tier_for(0.82, 0.85), Tier::Advisory);
+            assert_eq!(tier_for(0.5, 0.85), Tier::Advisory);
+        }
     }
 }

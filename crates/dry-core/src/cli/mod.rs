@@ -22,6 +22,8 @@ pub struct CliArgs {
     pub config: Config,
     /// Optional path to write JSON when format is `both`.
     pub json_out: Option<PathBuf>,
+    /// Binary name used for help text and report headers.
+    pub bin_name: &'static str,
 }
 
 /// Options that configure CLI parsing for a language-adapter binary.
@@ -122,6 +124,7 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
         paths: raw.paths,
         config,
         json_out: raw.json_out,
+        bin_name: options.bin_name,
     })
 }
 

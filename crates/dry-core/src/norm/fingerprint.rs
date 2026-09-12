@@ -1,7 +1,9 @@
 //! Subtree fingerprinting over [`NormNode`] trees.
 //!
 //! Digests use a fixed FNV-1a 64-bit protocol so fingerprints are stable across
-//! toolchains and CI runners.
+//! toolchains and CI runners. Birthday collisions on 64-bit digests are
+//! theoretically possible and may cause rare false similarity; that risk is
+//! accepted for this tool's local-analysis threat model.
 
 use std::collections::BTreeMap;
 

@@ -17,11 +17,14 @@ pub fn run_analysis(
     args: &CliArgs,
     normalizer: &impl LanguageNormalizer,
 ) -> Result<ExitCode, CliError> {
-    let result = analyze(&args.paths, &args.config, normalizer).map_err(|message| CliError {
-        message,
-        exit: ExitCode::from(2),
-        print_stdout: false,
-    })?;
+    let result =
+        analyze(&args.paths, &args.config, normalizer, args.bin_name).map_err(|message| {
+            CliError {
+                message,
+                exit: ExitCode::from(2),
+                print_stdout: false,
+            }
+        })?;
     emit_report(
         &result.report,
         args.config.output.format,
@@ -154,7 +157,13 @@ mod tests {
     #[test]
     fn emit_formats_cover_variants() {
         let base = temp_dir();
-        let report = Report::new(0.85, Vec::new(), ReportSummary::default(), Vec::new());
+        let report = Report::new(
+            "dry-core",
+            0.85,
+            Vec::new(),
+            ReportSummary::default(),
+            Vec::new(),
+        );
         assert!(emit_report(&report, OutputFormat::Text, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Json, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Both, None).is_ok());
