@@ -6,7 +6,9 @@ use syn::spanned::Spanned;
 use syn::visit::Visit;
 use syn::{Attribute, Expr, File, ImplItem, Item, ItemFn, ItemImpl, ItemTrait, TraitItem};
 
-use dry_core::{FingerprintResult, NormalizedForm, below_size_thresholds, fingerprint_tree};
+use dry_core::{
+    FingerprintResult, NormNode, NormalizedForm, below_size_thresholds, fingerprint_tree,
+};
 
 use super::FormParts;
 use super::build_form;
@@ -68,19 +70,7 @@ impl<'ast> Visit<'ast> for Extractor<'_> {
         let impl_is_test = self.in_test_cfg || has_cfg_test(&node.attrs);
         let impl_name = impl_type_name(node);
         for item in &node.items {
-            let ImplItem::Fn(method) = item else {
-                continue;
-            };
-            let name = format!("{impl_name}::{}", method.sig.ident);
-            let is_test =
-                impl_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
-            self.maybe_emit_fn(&name, &method.block, &method.sig, is_test);
-            let previous_name = self.enclosing_name.replace(name);
-            let previous_test = self.enclosing_is_test;
-            self.enclosing_is_test = is_test;
-            syn::visit::visit_impl_item_fn(self, method);
-            self.enclosing_name = previous_name;
-            self.enclosing_is_test = previous_test;
+            self.visit_one_impl_method(item, &impl_name, impl_is_test);
         }
     }
 
@@ -88,22 +78,7 @@ impl<'ast> Visit<'ast> for Extractor<'_> {
         let trait_is_test = self.in_test_cfg || has_cfg_test(&node.attrs);
         let trait_name = node.ident.to_string();
         for item in &node.items {
-            let TraitItem::Fn(method) = item else {
-                continue;
-            };
-            let Some(block) = &method.default else {
-                continue;
-            };
-            let name = format!("{trait_name}::{}", method.sig.ident);
-            let is_test =
-                trait_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
-            self.maybe_emit_fn(&name, block, &method.sig, is_test);
-            let previous_name = self.enclosing_name.replace(name);
-            let previous_test = self.enclosing_is_test;
-            self.enclosing_is_test = is_test;
-            syn::visit::visit_trait_item_fn(self, method);
-            self.enclosing_name = previous_name;
-            self.enclosing_is_test = previous_test;
+            self.visit_one_trait_method(item, &trait_name, trait_is_test);
         }
     }
 
@@ -124,6 +99,48 @@ impl<'ast> Visit<'ast> for Extractor<'_> {
 }
 
 impl Extractor<'_> {
+    fn visit_one_impl_method(&mut self, item: &ImplItem, impl_name: &str, impl_is_test: bool) {
+        let ImplItem::Fn(method) = item else {
+            return;
+        };
+        let name = format!("{impl_name}::{}", method.sig.ident);
+        let is_test = impl_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
+        self.emit_method_with_enclosing(&name, &method.block, &method.sig, is_test, |this| {
+            syn::visit::visit_impl_item_fn(this, method);
+        });
+    }
+
+    fn visit_one_trait_method(&mut self, item: &TraitItem, trait_name: &str, trait_is_test: bool) {
+        let TraitItem::Fn(method) = item else {
+            return;
+        };
+        let Some(block) = &method.default else {
+            return;
+        };
+        let name = format!("{trait_name}::{}", method.sig.ident);
+        let is_test = trait_is_test || has_test_attr(&method.attrs) || has_cfg_test(&method.attrs);
+        self.emit_method_with_enclosing(&name, block, &method.sig, is_test, |this| {
+            syn::visit::visit_trait_item_fn(this, method);
+        });
+    }
+
+    fn emit_method_with_enclosing(
+        &mut self,
+        name: &str,
+        block: &syn::Block,
+        sig: &syn::Signature,
+        is_test: bool,
+        visit_body: impl FnOnce(&mut Self),
+    ) {
+        self.maybe_emit_fn(name, block, sig, is_test);
+        let previous_name = self.enclosing_name.replace(name.to_owned());
+        let previous_test = self.enclosing_is_test;
+        self.enclosing_is_test = is_test;
+        visit_body(self);
+        self.enclosing_name = previous_name;
+        self.enclosing_is_test = previous_test;
+    }
+
     fn maybe_emit_fn(
         &mut self,
         name: &str,
@@ -152,18 +169,12 @@ impl Extractor<'_> {
             return;
         }
         let mut placeholders = PlaceholderMap::default();
-        let tree = match &*closure.body {
-            Expr::Block(block) => emit_block(&block.block, &mut placeholders),
-            other => emit_expr(other, &mut placeholders),
-        };
+        let tree = closure_tree(closure, &mut placeholders);
         let fp = fingerprint_tree(&tree);
         if below_size_thresholds(fp.node_count, start, end, self.min_nodes, self.min_lines) {
             return;
         }
-        let name = self.enclosing_name.as_ref().map_or_else(
-            || format!("$closure:L{start}"),
-            |parent| format!("{parent}.$closure:L{start}"),
-        );
+        let name = closure_form_name(self.enclosing_name.as_deref(), start);
         self.push_form(
             &name,
             start,
@@ -224,12 +235,19 @@ fn attr_is_cfg_test(attr: &Attribute) -> bool {
 fn meta_has_positive_test(meta: &syn::Meta, positive: bool) -> bool {
     match meta {
         syn::Meta::Path(path) => path.is_ident("test") && positive,
-        syn::Meta::List(list) if list.path.is_ident("not") => meta_list_any(list, !positive),
-        syn::Meta::List(list) if list.path.is_ident("any") || list.path.is_ident("all") => {
-            meta_list_any(list, positive)
-        }
-        syn::Meta::List(_) | syn::Meta::NameValue(_) => false,
+        syn::Meta::List(list) => meta_list_has_positive_test(list, positive),
+        syn::Meta::NameValue(_) => false,
     }
+}
+
+fn meta_list_has_positive_test(list: &syn::MetaList, positive: bool) -> bool {
+    if list.path.is_ident("not") {
+        return meta_list_any(list, !positive);
+    }
+    if list.path.is_ident("any") || list.path.is_ident("all") {
+        return meta_list_any(list, positive);
+    }
+    false
 }
 
 fn meta_list_any(list: &syn::MetaList, positive: bool) -> bool {
@@ -239,6 +257,20 @@ fn meta_list_any(list: &syn::MetaList, positive: bool) -> bool {
         return false;
     };
     items.iter().any(|child| meta_has_positive_test(child, positive))
+}
+
+fn closure_tree(closure: &syn::ExprClosure, placeholders: &mut PlaceholderMap) -> NormNode {
+    match &*closure.body {
+        Expr::Block(block) => emit_block(&block.block, placeholders),
+        other => emit_expr(other, placeholders),
+    }
+}
+
+fn closure_form_name(enclosing: Option<&str>, start: u32) -> String {
+    enclosing.map_or_else(
+        || format!("$closure:L{start}"),
+        |parent| format!("{parent}.$closure:L{start}"),
+    )
 }
 
 fn impl_type_name(node: &ItemImpl) -> String {

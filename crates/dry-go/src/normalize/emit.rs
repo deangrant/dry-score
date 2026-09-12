@@ -41,7 +41,7 @@ fn emit_children(
     children
 }
 
-fn should_skip(node: Node<'_>) -> bool {
+pub(super) fn should_skip(node: Node<'_>) -> bool {
     !node.is_named() || node.kind() == "comment" || node.is_error() || node.is_missing()
 }
 
@@ -112,15 +112,11 @@ fn structural_label(node: Node<'_>, source: &[u8]) -> String {
 
 fn operator_text(node: Node<'_>, source: &[u8]) -> String {
     let mut cursor = node.walk();
-    for child in node.children(&mut cursor) {
-        if !child.is_named() {
-            let text = node_text(child, source).trim();
-            if !text.is_empty() {
-                return text.to_owned();
-            }
-        }
-    }
-    "_".to_owned()
+    node.children(&mut cursor)
+        .filter(|child| !child.is_named())
+        .map(|child| node_text(child, source).trim().to_owned())
+        .find(|text| !text.is_empty())
+        .unwrap_or_else(|| "_".to_owned())
 }
 
 /// UTF-8 slice for a CST node's byte range.
@@ -190,5 +186,38 @@ func demo() {
         let mut placeholders = PlaceholderMap::default();
         let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
         assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
+    }
+
+    #[test]
+    fn emit_skips_comments_and_unknown_operators() {
+        let src = "package p\nfunc demo() { /* c */ x := 1 }\n";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut comment = None;
+        let mut cursor = root.walk();
+        for child in root.children(&mut cursor) {
+            walk_find_comment(child, &mut comment);
+        }
+        if let Some(node) = comment {
+            let mut placeholders = PlaceholderMap::default();
+            let skipped = emit_node(node, src.as_bytes(), &mut placeholders);
+            assert_eq!(skipped.label, "skip");
+        }
+        assert_eq!(operator_text(root, src.as_bytes()), "_");
+    }
+
+    fn walk_find_comment<'a>(node: Node<'a>, found: &mut Option<Node<'a>>) {
+        if found.is_some() {
+            return;
+        }
+        if node.kind() == "comment" {
+            *found = Some(node);
+            return;
+        }
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            walk_find_comment(child, found);
+        }
     }
 }

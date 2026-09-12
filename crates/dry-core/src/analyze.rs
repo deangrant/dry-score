@@ -47,18 +47,15 @@ pub fn analyze(
 /// Prefer root-relative paths for report stability; keep the original when no
 /// root is a prefix.
 fn relativize_one(path: &Path, roots: &[PathBuf]) -> PathBuf {
-    let mut best: Option<PathBuf> = None;
-    let mut best_len = 0_usize;
-    for root in roots {
-        if let Ok(rel) = path.strip_prefix(root) {
-            let root_len = root.as_os_str().len();
-            if root_len >= best_len {
-                best_len = root_len;
-                best = Some(rel.to_path_buf());
-            }
-        }
-    }
-    best.unwrap_or_else(|| path.to_path_buf())
+    roots
+        .iter()
+        .filter_map(|root| {
+            path.strip_prefix(root)
+                .ok()
+                .map(|rel| (root.as_os_str().len(), rel.to_path_buf()))
+        })
+        .max_by_key(|(len, _)| *len)
+        .map_or_else(|| path.to_path_buf(), |(_, rel)| rel)
 }
 
 fn normalize_sources(
@@ -109,16 +106,31 @@ fn normalize_one(
             return;
         }
     };
-    match normalizer.normalize_file(report_path, &source, state.next_id) {
-        Ok(outcome) => {
-            *state.files_scanned = state.files_scanned.saturating_add(1);
-            for warning in outcome.warnings {
-                state.warnings.push(format!("{}: {warning}", report_path.display()));
-            }
-            state.forms.extend(outcome.forms);
-        }
+    apply_normalize_outcome(report_path, normalizer, &source, state);
+}
+
+fn apply_normalize_outcome(
+    report_path: &Path,
+    normalizer: &impl LanguageNormalizer,
+    source: &str,
+    state: &mut NormalizeState<'_>,
+) {
+    match normalizer.normalize_file(report_path, source, state.next_id) {
+        Ok(outcome) => record_normalize_ok(report_path, outcome, state),
         Err(err) => state.warnings.push(format!("{}: {err}", report_path.display())),
     }
+}
+
+fn record_normalize_ok(
+    report_path: &Path,
+    outcome: crate::ports::NormalizeOutcome,
+    state: &mut NormalizeState<'_>,
+) {
+    *state.files_scanned = state.files_scanned.saturating_add(1);
+    for warning in outcome.warnings {
+        state.warnings.push(format!("{}: {warning}", report_path.display()));
+    }
+    state.forms.extend(outcome.forms);
 }
 
 fn check_file_size(path: &Path, report_path: &Path, max_file_bytes: u64) -> Result<(), String> {
@@ -182,6 +194,7 @@ mod tests {
 
     struct StubNormalizer {
         fail: bool,
+        soft_warnings: Vec<String>,
     }
 
     impl LanguageNormalizer for StubNormalizer {
@@ -207,7 +220,7 @@ mod tests {
                     fingerprints: BTreeMap::from([(1, 1), (2, 1), (3, 1)]),
                     ident_trace: vec!["x".to_owned()],
                 }],
-                warnings: Vec::new(),
+                warnings: self.soft_warnings.clone(),
             })
         }
     }
@@ -229,7 +242,10 @@ mod tests {
         let result = analyze(
             std::slice::from_ref(&root),
             &config,
-            &StubNormalizer { fail: false },
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         );
         assert!(result.is_ok());
@@ -253,7 +269,10 @@ mod tests {
         let result = analyze(
             std::slice::from_ref(&root),
             &Config::default(),
-            &StubNormalizer { fail: false },
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         )
         .expect("ok");
@@ -269,7 +288,10 @@ mod tests {
         let result = analyze(
             std::slice::from_ref(&root),
             &Config::default(),
-            &StubNormalizer { fail: true },
+            &StubNormalizer {
+                fail: true,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         );
         assert!(result.is_ok());
@@ -277,6 +299,47 @@ mod tests {
         let result = result.expect("ok");
         assert_eq!(result.report.parse_warnings.len(), 1);
         let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn analyze_records_soft_normalize_warnings() {
+        let path = temp_rs("soft");
+        let root = path.parent().map_or_else(|| PathBuf::from("."), Path::to_path_buf);
+        let result = analyze(
+            std::slice::from_ref(&root),
+            &Config::default(),
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: vec!["partial CST".to_owned()],
+            },
+            "dry-core",
+        );
+        assert!(result.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
+        let result = result.expect("ok");
+        assert!(result.report.parse_warnings.iter().any(|w| w.contains("partial CST")));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn relativize_prefers_longest_matching_root() {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let outer = std::env::temp_dir().join(format!("dry-rel-outer-{stamp}"));
+        let inner = outer.join("inner");
+        assert!(fs::create_dir_all(&inner).is_ok());
+        let file = inner.join("lib.rs");
+        assert!(fs::write(&file, "fn a() {}\n").is_ok());
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let outer = outer.canonicalize().expect("outer");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let inner = inner.canonicalize().expect("inner");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let file = file.canonicalize().expect("file");
+        let rel = relativize_one(&file, &[outer.clone(), inner]);
+        assert_eq!(rel, PathBuf::from("lib.rs"));
+        let unmatched = relativize_one(Path::new("/elsewhere/x.rs"), std::slice::from_ref(&outer));
+        assert_eq!(unmatched, PathBuf::from("/elsewhere/x.rs"));
+        let _ = fs::remove_dir_all(outer);
     }
 
     #[test]
@@ -292,7 +355,10 @@ mod tests {
         let result = analyze(
             std::slice::from_ref(&root),
             &Config::default(),
-            &StubNormalizer { fail: false },
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         );
         #[cfg(unix)]
@@ -314,7 +380,10 @@ mod tests {
         let err = analyze(
             &[missing],
             &Config::default(),
-            &StubNormalizer { fail: false },
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         );
         assert!(err.is_err());
@@ -330,7 +399,10 @@ mod tests {
         let result = analyze(
             std::slice::from_ref(&root),
             &config,
-            &StubNormalizer { fail: false },
+            &StubNormalizer {
+                fail: false,
+                soft_warnings: Vec::new(),
+            },
             "dry-core",
         );
         assert!(result.is_ok());

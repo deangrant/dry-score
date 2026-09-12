@@ -185,6 +185,8 @@ fn classifies_compound_cfg_modules_and_not_test() {
     assert!(!attr_is_cfg_test(&not_cfg));
     let feature_named_test: syn::Attribute = syn::parse_quote!(#[cfg(feature = "test")]);
     assert!(!attr_is_cfg_test(&feature_named_test));
+    let unknown_list: syn::Attribute = syn::parse_quote!(#[cfg(target(test))]);
+    assert!(!attr_is_cfg_test(&unknown_list));
 }
 
 #[test]
@@ -242,4 +244,78 @@ fn nested_closures_with_identical_bodies_share_fingerprints() {
     );
     assert_eq!(closures[0].fingerprints, closures[1].fingerprints);
     assert!(closures.iter().all(|f| f.name.starts_with("with_closures.$closure:")));
+}
+
+#[test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "coverage corpus hits ignore, expr-body, tiny, and nameless closures"
+)]
+fn closure_coverage_branches() {
+    let ignored = r"
+            fn host() {
+                let c = |n: i32| {
+                    // dry-rs:ignore
+                    let mut acc = n;
+                    if acc < 0 {
+                        acc = 0 - acc;
+                    }
+                    acc + 1
+                };
+                let _ = c(1);
+            }
+        ";
+    assert!(!extract(ignored).iter().any(|f| f.name.contains("$closure:")));
+
+    let expr_body = r"
+            fn host() -> i32 {
+                let c = |n: i32|
+                    if n < 0 {
+                        0 - n
+                    } else {
+                        n + 1
+                    };
+                c(1)
+            }
+        ";
+    let forms = extract(expr_body);
+    assert!(
+        forms.iter().any(|f| f.name.contains("host.$closure:")),
+        "forms={forms:?}"
+    );
+
+    let tiny = r"
+            fn host() {
+                let c = || 1;
+                let _ = c();
+            }
+        ";
+    #[expect(clippy::expect_used, reason = "test setup")]
+    let file = parse_file(tiny).expect("parse");
+    let mut next_id = 1;
+    let forms = extract_forms(&file, Path::new("t.rs"), tiny, 999, 999, &mut next_id);
+    assert!(!forms.iter().any(|f| f.name.contains("$closure:")));
+
+    let nameless = r"
+            const C: fn(i32) -> i32 = |n: i32| {
+                let mut acc = n;
+                if acc < 0 {
+                    acc = 0 - acc;
+                }
+                acc + 1
+            };
+        ";
+    let forms = extract(nameless);
+    assert!(
+        forms.iter().any(|f| f.name.starts_with("$closure:L") && !f.name.contains('.')),
+        "forms={forms:?}"
+    );
+}
+
+#[test]
+fn cfg_parse_errors_are_not_test() {
+    let bad_cfg: syn::Attribute = syn::parse_quote!(#[cfg(1 + 2)]);
+    assert!(!attr_is_cfg_test(&bad_cfg));
+    let bad_any: syn::Attribute = syn::parse_quote!(#[cfg(any(1 + 2))]);
+    assert!(!attr_is_cfg_test(&bad_any));
 }

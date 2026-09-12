@@ -54,20 +54,10 @@ fn try_expand_macro(
 
 fn parse_macro_exprs(tokens: TokenStream) -> Option<Vec<Expr>> {
     use syn::parse::Parser;
-    if let Ok(list) = Punctuated::<Expr, Token![,]>::parse_terminated.parse2(tokens.clone()) {
-        return Some(list.into_iter().collect());
-    }
-    if let Ok(expr) = syn::parse2::<Expr>(tokens.clone()) {
-        return Some(vec![expr]);
-    }
-    if let Ok(block) = syn::parse2::<syn::Block>(tokens) {
-        return Some(vec![Expr::Block(syn::ExprBlock {
-            attrs: Vec::new(),
-            label: None,
-            block,
-        })]);
-    }
-    None
+    Punctuated::<Expr, Token![,]>::parse_terminated
+        .parse2(tokens)
+        .ok()
+        .map(|list| list.into_iter().collect())
 }
 
 fn is_expand_allowlisted(name: &str) -> bool {
@@ -247,9 +237,19 @@ mod tests {
     }
 
     #[test]
-    fn multi_segment_path_uses_last_segment() {
-        let node = expr_macro(parse_quote!(std::vec![1]));
-        assert_eq!(node.label, "macro_expand:vec:bracket");
+    fn empty_expand_is_leaf_and_parse_none() {
+        use std::str::FromStr;
+
+        let empty = expr_macro(parse_quote!(vec![]));
+        assert_eq!(empty.label, "macro_expand:vec:bracket");
+        assert!(empty.children.is_empty());
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let bad = TokenStream::from_str("struct S;").expect("tokens");
+        assert!(parse_macro_exprs(bad).is_none());
+        assert_eq!(
+            parse_macro_exprs(TokenStream::new()).map(|v| v.len()),
+            Some(0)
+        );
     }
 
     #[test]

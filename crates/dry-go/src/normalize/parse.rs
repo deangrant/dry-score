@@ -92,4 +92,17 @@ func broken( {
             outcome.warnings
         );
     }
+
+    #[test]
+    fn ignore_file_skips_normalize() {
+        let src = "// dry-go:ignore-file\npackage p\nfunc ok() {}\n";
+        let normalizer = GoNormalizer::new(1, 1);
+        let mut next_id = 1;
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let outcome = normalizer
+            .normalize_file(Path::new("ignored.go"), src, &mut next_id)
+            .expect("normalize");
+        assert!(outcome.forms.is_empty());
+        assert!(outcome.warnings.is_empty());
+    }
 }

@@ -10,6 +10,11 @@ pub fn jaccard(left: &BTreeMap<u64, u32>, right: &BTreeMap<u64, u32>) -> f64 {
     if left.is_empty() || right.is_empty() {
         return 0.0;
     }
+    let (intersection, union) = multiset_overlap(left, right);
+    intersection as f64 / union as f64
+}
+
+fn multiset_overlap(left: &BTreeMap<u64, u32>, right: &BTreeMap<u64, u32>) -> (u64, u64) {
     let mut intersection = 0_u64;
     let mut union = 0_u64;
     for (key, &left_count) in left {
@@ -22,10 +27,7 @@ pub fn jaccard(left: &BTreeMap<u64, u32>, right: &BTreeMap<u64, u32>) -> f64 {
             union = union.saturating_add(u64::from(right_count));
         }
     }
-    if union == 0 {
-        return 0.0;
-    }
-    intersection as f64 / union as f64
+    (intersection, union)
 }
 
 #[cfg(test)]

@@ -7,7 +7,7 @@ use dry_core::{
 };
 use tree_sitter::Node;
 
-use super::emit::{emit_node, node_text};
+use super::emit::{emit_node, node_text, should_skip};
 use super::kind_from_path;
 use super::suppress::span_is_ignored;
 
@@ -91,8 +91,7 @@ fn try_walk_literal(node: Node<'_>, parent_name: Option<&str>, ctx: &mut Extract
 fn walk_children(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
     let mut cursor = node.walk();
     for child in node.children(&mut cursor) {
-        if !child.is_named() || child.kind() == "comment" || child.is_error() || child.is_missing()
-        {
+        if should_skip(child) {
             continue;
         }
         walk_forms(child, parent_name, ctx);
@@ -101,36 +100,31 @@ fn walk_children(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx
 
 fn maybe_emit_function(node: Node<'_>, ctx: &mut ExtractCtx<'_>) {
     // dry-rs:ignore. CC-driven emit shells; parallel shape is intentional.
-    let Some(body) = node.child_by_field_name("body") else {
-        return;
-    };
-    let Some(name) = function_name(node, ctx.source_bytes) else {
-        return;
-    };
-    push_form(body, &name, ctx);
+    if let Some(body) = node.child_by_field_name("body")
+        && let Some(name) = function_name(node, ctx.source_bytes)
+    {
+        push_form(body, &name, ctx);
+    }
 }
 
 fn maybe_emit_method(node: Node<'_>, ctx: &mut ExtractCtx<'_>) {
     // dry-rs:ignore. CC-driven emit shells; parallel shape is intentional.
-    let Some(body) = node.child_by_field_name("body") else {
-        return;
-    };
-    let Some(name) = method_name(node, ctx.source_bytes) else {
-        return;
-    };
-    push_form(body, &name, ctx);
+    if let Some(body) = node.child_by_field_name("body")
+        && let Some(name) = method_name(node, ctx.source_bytes)
+    {
+        push_form(body, &name, ctx);
+    }
 }
 
 fn maybe_emit_literal(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
-    let Some(body) = node.child_by_field_name("body") else {
-        return;
-    };
-    let line = u32::try_from(node.start_position().row.saturating_add(1)).unwrap_or(u32::MAX);
-    let name = parent_name.map_or_else(
-        || format!("$literal:L{line}"),
-        |parent| format!("{parent}.$literal:L{line}"),
-    );
-    push_form(body, &name, ctx);
+    if let Some(body) = node.child_by_field_name("body") {
+        let line = u32::try_from(node.start_position().row.saturating_add(1)).unwrap_or(u32::MAX);
+        let name = parent_name.map_or_else(
+            || format!("$literal:L{line}"),
+            |parent| format!("{parent}.$literal:L{line}"),
+        );
+        push_form(body, &name, ctx);
+    }
 }
 
 fn push_form(body: Node<'_>, name: &str, ctx: &mut ExtractCtx<'_>) {
@@ -179,12 +173,7 @@ fn receiver_type_name(node: Node<'_>, source: &[u8]) -> Option<String> {
 
 fn first_receiver_type(params: Node<'_>, source: &[u8]) -> Option<String> {
     let mut cursor = params.walk();
-    for child in params.children(&mut cursor) {
-        if let Some(name) = param_type_name(child, source) {
-            return Some(name);
-        }
-    }
-    None
+    params.children(&mut cursor).find_map(|child| param_type_name(child, source))
 }
 
 fn param_type_name(child: Node<'_>, source: &[u8]) -> Option<String> {
@@ -338,5 +327,128 @@ func (x interface{}) Run(n int) int {
             forms.iter().any(|f| f.name.contains("::Run")),
             "forms={forms:?}"
         );
+    }
+
+    #[test]
+    #[expect(
+        clippy::too_many_lines,
+        reason = "coverage corpus hits literal, soft-parse, and map-receiver paths"
+    )]
+    fn extract_coverage_edge_cases() {
+        let tiny = "package p\nfunc tiny() int { return 1 }\n";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(tiny).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.tree.root_node(),
+            Path::new("tiny.go"),
+            tiny.as_bytes(),
+            tiny,
+            999,
+            999,
+            &mut next_id,
+        );
+        assert!(forms.is_empty(), "below thresholds: {forms:?}");
+
+        let literal = r"package p
+var top = func(n int) int {
+  if n < 0 {
+    return 0 - n
+  }
+  return n + 1
+}
+func host() {
+  f := func(n int) int {
+    if n < 0 {
+      return 0 - n
+    }
+    return n + 1
+  }
+  _ = f(1)
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(literal).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.tree.root_node(),
+            Path::new("lit.go"),
+            literal.as_bytes(),
+            literal,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            forms.iter().any(|f| f.name.starts_with("$literal:L")),
+            "top-level literal forms={forms:?}"
+        );
+        assert!(
+            forms.iter().any(|f| f.name.contains("host.$literal:")),
+            "parented literal forms={forms:?}"
+        );
+
+        let broken = "package p\nfunc (\nfunc { }\n";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(broken).expect("parse");
+        let mut next_id = 1;
+        let _ = extract_forms(
+            tree.tree.root_node(),
+            Path::new("broken.go"),
+            broken.as_bytes(),
+            broken,
+            1,
+            1,
+            &mut next_id,
+        );
+
+        let maprecv = r"package p
+func (x map[string]int) Run(n int) int {
+  if n < 0 {
+    return 0
+  }
+  return n + 1
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(maprecv).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.tree.root_node(),
+            Path::new("maprecv.go"),
+            maprecv.as_bytes(),
+            maprecv,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            forms.iter().any(|f| f.name.contains("::Run")),
+            "map receiver forms={forms:?}"
+        );
+        let _ = should_skip(tree.tree.root_node());
+    }
+
+    #[test]
+    fn maybe_emit_skips_nodes_without_body() {
+        let src = "package p\n";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut next_id = 1;
+        let mut ctx = ExtractCtx {
+            path: Path::new("p.go"),
+            source_bytes: src.as_bytes(),
+            source: src,
+            min_nodes: 1,
+            min_lines: 1,
+            next_id: &mut next_id,
+            kind: FormKind::Production,
+            forms: Vec::new(),
+        };
+        maybe_emit_function(root, &mut ctx);
+        maybe_emit_method(root, &mut ctx);
+        maybe_emit_literal(root, None, &mut ctx);
+        assert!(ctx.forms.is_empty());
     }
 }

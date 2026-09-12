@@ -20,6 +20,7 @@ tree-sitter-go = "0.25"
 unsafe_code = "allow"
 non_ascii_idents = "forbid"
 warnings = "deny"
+dead_code = "deny"
 rust_2018_idioms = { level = "deny", priority = -1 }
 future_incompatible = { level = "deny", priority = -1 }
 nonstandard_style = { level = "deny", priority = -1 }

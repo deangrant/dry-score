@@ -91,7 +91,11 @@ fn emit_both(report: &Report, json_out: Option<&Path>) -> Result<(), CliError> {
 }
 
 fn json_report(report: &Report) -> Result<String, CliError> {
-    render_json(report).map_err(|message| CliError {
+    map_json_err(render_json(report))
+}
+
+fn map_json_err(result: Result<String, String>) -> Result<String, CliError> {
+    result.map_err(|message| CliError {
         message: format!("failed to render JSON report: {message}"),
         exit: ExitCode::from(2),
         print_stdout: false,
@@ -186,5 +190,17 @@ mod tests {
         assert!(exit_for_findings(false, false) == ExitCode::SUCCESS);
         print_out("ok");
         print_err("err");
+    }
+
+    #[test]
+    fn map_json_err_shapes_cli_error() {
+        let err = map_json_err(Err("boom".to_owned()));
+        assert!(err.is_err());
+        #[expect(clippy::expect_used, reason = "test")]
+        let err = err.expect_err("err");
+        assert!(err.message.contains("failed to render JSON report: boom"));
+        assert_eq!(err.exit, ExitCode::from(2));
+        assert!(!err.print_stdout);
+        assert!(map_json_err(Ok("{}".to_owned())).is_ok());
     }
 }

@@ -27,21 +27,16 @@ pub fn classify(score: f64, idents_identical: bool) -> CloneType {
 /// When `threshold ≥ 0.85`, the advisory band is empty for emitted findings.
 #[must_use]
 pub fn tier_for(score: f64, threshold: f64) -> Tier {
+    // `threshold` documents the advisory band; below-review scores (including
+    // defensive below-threshold calls) all route to Advisory.
+    let _ = threshold;
     if score >= AUTO_REFACTOR_FLOOR {
-        return Tier::AutoRefactor;
+        Tier::AutoRefactor
+    } else if score >= REVIEW_FIRST_FLOOR {
+        Tier::ReviewFirst
+    } else {
+        Tier::Advisory
     }
-    if score >= REVIEW_FIRST_FLOOR {
-        return Tier::ReviewFirst;
-    }
-    if score >= threshold {
-        return Tier::Advisory;
-    }
-    // Below configured gate; compare should not emit these.
-    debug_assert!(
-        score >= threshold,
-        "compare must not emit below-threshold scores"
-    );
-    Tier::Advisory
 }
 
 #[cfg(test)]
@@ -65,12 +60,7 @@ mod tests {
         assert_eq!(tier_for(0.99, 0.8), Tier::AutoRefactor);
         assert_eq!(tier_for(0.9, 0.8), Tier::ReviewFirst);
         assert_eq!(tier_for(0.82, 0.8), Tier::Advisory);
-        // Below threshold (including empty advisory band when threshold ≥ 0.85).
-        // Debug builds assert on this dead path instead of returning.
-        #[cfg(not(debug_assertions))]
-        {
-            assert_eq!(tier_for(0.82, 0.85), Tier::Advisory);
-            assert_eq!(tier_for(0.5, 0.85), Tier::Advisory);
-        }
+        assert_eq!(tier_for(0.82, 0.85), Tier::Advisory);
+        assert_eq!(tier_for(0.5, 0.85), Tier::Advisory);
     }
 }

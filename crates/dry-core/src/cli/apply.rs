@@ -54,7 +54,9 @@ fn try_apply_configish(
     raw: &mut RawFlags,
 ) -> Option<Result<(), CliError>> {
     // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
-    try_apply_config_threshold(arg, args, raw).or_else(|| try_apply_mins(arg, args, raw))
+    try_apply_config_threshold(arg, args, raw)
+        .or_else(|| try_apply_mins(arg, args, raw))
+        .or_else(|| try_apply_walk_lists(arg, args, raw))
 }
 
 fn try_apply_config_threshold(
@@ -79,6 +81,17 @@ fn try_apply_mins(
     match arg {
         "--min-nodes" => Some(apply_min_nodes(args, raw)),
         "--min-lines" => Some(apply_min_lines(args, raw)),
+        _ => None,
+    }
+}
+
+fn try_apply_walk_lists(
+    arg: &str,
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Option<Result<(), CliError>> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    match arg {
         "--extensions" => Some(apply_extensions(args, raw)),
         "--exclude" => Some(apply_exclude(args, raw)),
         _ => None,

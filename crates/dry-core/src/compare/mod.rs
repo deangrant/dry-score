@@ -92,21 +92,30 @@ fn push_cluster_if_pair(
     if group.len() < 2 {
         return;
     }
-    let mut by_idents: BTreeMap<&[String], Vec<usize>> = BTreeMap::new();
-    for &idx in group {
-        by_idents.entry(forms[idx].ident_trace.as_slice()).or_default().push(idx);
-    }
-    let mut leftovers = Vec::new();
-    for ident_group in by_idents.values() {
-        if ident_group.len() >= 2 {
-            push_exact_finding(forms, ident_group, claimed, threshold, true, findings);
-        } else {
-            leftovers.extend(ident_group.iter().copied());
-        }
+    let (identical, leftovers) = partition_by_idents(forms, group);
+    for ident_group in identical {
+        push_exact_finding(forms, &ident_group, claimed, threshold, true, findings);
     }
     if leftovers.len() >= 2 {
         push_exact_finding(forms, &leftovers, claimed, threshold, false, findings);
     }
+}
+
+fn partition_by_idents(forms: &[NormalizedForm], group: &[usize]) -> (Vec<Vec<usize>>, Vec<usize>) {
+    let mut by_idents: BTreeMap<&[String], Vec<usize>> = BTreeMap::new();
+    for &idx in group {
+        by_idents.entry(forms[idx].ident_trace.as_slice()).or_default().push(idx);
+    }
+    let mut identical = Vec::new();
+    let mut leftovers = Vec::new();
+    for ident_group in by_idents.into_values() {
+        if ident_group.len() >= 2 {
+            identical.push(ident_group);
+        } else {
+            leftovers.extend(ident_group);
+        }
+    }
+    (identical, leftovers)
 }
 
 fn push_exact_finding(
@@ -147,9 +156,6 @@ fn near_miss_findings(
     let components = near_miss_components(remaining.len(), &edges);
     let mut findings = Vec::new();
     for (member_idxs, score) in components {
-        if member_idxs.len() < 2 {
-            continue;
-        }
         findings.push(near_miss_component_finding(
             &remaining,
             &member_idxs,
@@ -195,22 +201,38 @@ fn collect_near_miss_edges(
     let mut seen_pairs = BTreeSet::new();
     for (left_idx, left) in remaining.iter().enumerate() {
         for &fp in left.fingerprints.keys() {
-            let Some(postings) = index.get(&fp) else {
-                continue;
-            };
+            let postings = index.get(&fp).map_or(&[][..], Vec::as_slice);
             for &right_idx in postings {
-                if right_idx <= left_idx || !seen_pairs.insert((left_idx, right_idx)) {
-                    continue;
+                if let Some(score) = edge_score_if_new(
+                    remaining,
+                    left_idx,
+                    left,
+                    right_idx,
+                    &claimed,
+                    threshold,
+                    &mut seen_pairs,
+                ) {
+                    edges.push((left_idx, right_idx, score));
                 }
-                let right = remaining[right_idx];
-                let Some(score) = scored_near_miss(left, right, &claimed, threshold) else {
-                    continue;
-                };
-                edges.push((left_idx, right_idx, score));
             }
         }
     }
     edges
+}
+
+fn edge_score_if_new(
+    remaining: &[&NormalizedForm],
+    left_idx: usize,
+    left: &NormalizedForm,
+    right_idx: usize,
+    claimed: &BTreeSet<u64>,
+    threshold: f64,
+    seen_pairs: &mut BTreeSet<(usize, usize)>,
+) -> Option<f64> {
+    if right_idx <= left_idx || !seen_pairs.insert((left_idx, right_idx)) {
+        return None;
+    }
+    scored_near_miss(left, remaining[right_idx], claimed, threshold)
 }
 
 fn near_miss_components(n: usize, edges: &[(usize, usize, f64)]) -> Vec<(Vec<usize>, f64)> {
