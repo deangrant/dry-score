@@ -14,7 +14,8 @@ pub struct NormalizedForm {
     pub id: u64,
     /// Human-readable name (function or block label).
     pub name: String,
-    /// Absolute or repo-relative path to the source file.
+    /// Root-relative path to the source file when analyzable under a root;
+    /// otherwise the path as discovered.
     pub path: PathBuf,
     /// Line span of the form in the source file.
     pub span: FormSpan,

@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 description = "Structural duplication detector for Rust source"
 readme = "../../README.md"
-repository = "https://github.com/local/dry-score"
+repository = "https://github.com/deangrant/dry-score"
 keywords = ["dry", "duplication", "clone-detection"]
 categories = ["development-tools", "command-line-utilities"]
 

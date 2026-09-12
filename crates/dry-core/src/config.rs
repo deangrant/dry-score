@@ -187,9 +187,16 @@ pub fn validate_threshold(threshold: f64) -> Result<(), ConfigError> {
 ///
 /// # Errors
 ///
-/// Returns [`ConfigError`] when the file cannot be read or parsed, or when
+/// Returns [`ConfigError`] when the path is a symlink or otherwise not a
+/// regular file, when the file cannot be read or parsed, or when
 /// `gate.threshold` is outside `[0.0, 1.0]`.
 pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
+    if !is_regular_file(path) {
+        return Err(ConfigError::new(format!(
+            "config path must be a regular file (symlinks are not followed): {}",
+            path.display()
+        )));
+    }
     let raw = fs::read_to_string(path)
         .map_err(|err| ConfigError::new(format!("failed to read {}: {err}", path.display())))?;
     let config: Config = toml::from_str(&raw)
@@ -199,15 +206,22 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
 }
 
 /// Walks upward from `start` looking for `dry.toml`.
+///
+/// Symlinked `dry.toml` files are ignored so config discovery matches the
+/// walker policy of not following symlinks.
 #[must_use]
 pub fn discover_config(start: &Path) -> Option<PathBuf> {
     for dir in start.ancestors() {
         let candidate = dir.join("dry.toml");
-        if candidate.is_file() {
+        if is_regular_file(&candidate) {
             return Some(candidate);
         }
     }
     None
+}
+
+fn is_regular_file(path: &Path) -> bool {
+    fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_file())
 }
 
 #[cfg(test)]
@@ -313,6 +327,23 @@ mod tests {
         let found = discover_config(&nested);
         assert!(found.is_some());
         assert!(discover_config(Path::new("/tmp/dry-rs-no-config-ancestor-xyz")).is_none());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn discover_and_load_skip_symlink_dry_toml() {
+        let dir = temp_dir("cfg-symlink");
+        let target = dir.join("outside.toml");
+        assert!(fs::write(&target, "[gate]\nthreshold = 0.9\n").is_ok());
+        let link = dir.join("dry.toml");
+        assert!(std::os::unix::fs::symlink(&target, &link).is_ok());
+        assert!(discover_config(&dir).is_none());
+        let err = load_config(&link);
+        assert!(err.is_err());
+        #[expect(clippy::expect_used, reason = "test asserts error path")]
+        let err = err.expect_err("symlink");
+        assert!(err.to_string().contains("symlinks"));
         let _ = fs::remove_dir_all(dir);
     }
 

@@ -31,7 +31,7 @@ pub fn analyze(
     let options = WalkOptions::new(config.walk.extensions.clone(), config.walk.exclude.clone());
     let files = collect_source_files(roots, &options).map_err(|err| err.to_string())?;
     let (forms, warnings, files_scanned) =
-        normalize_sources(&files, normalizer, config.walk.max_file_bytes);
+        normalize_sources(&files, roots, normalizer, config.walk.max_file_bytes);
     let forms_compared = u32::try_from(forms.len()).unwrap_or(u32::MAX);
     let findings = compare(&forms, config.gate.threshold);
     let summary = build_summary(
@@ -44,8 +44,26 @@ pub fn analyze(
     Ok(AnalysisResult { report })
 }
 
+/// Prefer root-relative paths for report stability; keep the original when no
+/// root is a prefix.
+fn relativize_one(path: &Path, roots: &[PathBuf]) -> PathBuf {
+    let mut best: Option<PathBuf> = None;
+    let mut best_len = 0_usize;
+    for root in roots {
+        if let Ok(rel) = path.strip_prefix(root) {
+            let root_len = root.as_os_str().len();
+            if root_len >= best_len {
+                best_len = root_len;
+                best = Some(rel.to_path_buf());
+            }
+        }
+    }
+    best.unwrap_or_else(|| path.to_path_buf())
+}
+
 fn normalize_sources(
     files: &[PathBuf],
+    roots: &[PathBuf],
     normalizer: &impl LanguageNormalizer,
     max_file_bytes: u64,
 ) -> (Vec<NormalizedForm>, Vec<String>, u32) {
@@ -53,59 +71,63 @@ fn normalize_sources(
     let mut warnings = Vec::new();
     let mut next_id = 1_u64;
     let mut files_scanned = 0_u32;
+    let mut state = NormalizeState {
+        next_id: &mut next_id,
+        forms: &mut forms,
+        warnings: &mut warnings,
+        files_scanned: &mut files_scanned,
+    };
     for path in files {
-        normalize_one(
-            path,
-            normalizer,
-            max_file_bytes,
-            &mut next_id,
-            &mut forms,
-            &mut warnings,
-            &mut files_scanned,
-        );
+        let report_path = relativize_one(path, roots);
+        normalize_one(path, &report_path, normalizer, max_file_bytes, &mut state);
     }
     (forms, warnings, files_scanned)
 }
 
+struct NormalizeState<'a> {
+    next_id: &'a mut u64,
+    forms: &'a mut Vec<NormalizedForm>,
+    warnings: &'a mut Vec<String>,
+    files_scanned: &'a mut u32,
+}
+
 fn normalize_one(
     path: &Path,
+    report_path: &Path,
     normalizer: &impl LanguageNormalizer,
     max_file_bytes: u64,
-    next_id: &mut u64,
-    forms: &mut Vec<NormalizedForm>,
-    warnings: &mut Vec<String>,
-    files_scanned: &mut u32,
+    state: &mut NormalizeState<'_>,
 ) {
-    if let Err(warning) = check_file_size(path, max_file_bytes) {
-        warnings.push(warning);
+    if let Err(warning) = check_file_size(path, report_path, max_file_bytes) {
+        state.warnings.push(warning);
         return;
     }
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(err) => {
-            warnings.push(format!("{}: {err}", path.display()));
+            state.warnings.push(format!("{}: {err}", report_path.display()));
             return;
         }
     };
-    match normalizer.normalize_file(path, &source, next_id) {
+    match normalizer.normalize_file(report_path, &source, state.next_id) {
         Ok(outcome) => {
-            *files_scanned = files_scanned.saturating_add(1);
+            *state.files_scanned = state.files_scanned.saturating_add(1);
             for warning in outcome.warnings {
-                warnings.push(format!("{}: {warning}", path.display()));
+                state.warnings.push(format!("{}: {warning}", report_path.display()));
             }
-            forms.extend(outcome.forms);
+            state.forms.extend(outcome.forms);
         }
-        Err(err) => warnings.push(format!("{}: {err}", path.display())),
+        Err(err) => state.warnings.push(format!("{}: {err}", report_path.display())),
     }
 }
 
-fn check_file_size(path: &Path, max_file_bytes: u64) -> Result<(), String> {
-    let meta = fs::metadata(path).map_err(|err| format!("{}: {err}", path.display()))?;
+fn check_file_size(path: &Path, report_path: &Path, max_file_bytes: u64) -> Result<(), String> {
+    let meta = fs::metadata(path).map_err(|err| format!("{}: {err}", report_path.display()))?;
     let len = meta.len();
     if len > max_file_bytes {
         return Err(format!(
             "{}: file exceeds walk.max_file_bytes ({len} > {max_file_bytes})",
-            path.display()
+            report_path.display()
         ));
     }
     Ok(())
@@ -215,6 +237,28 @@ mod tests {
         let result = result.expect("ok");
         assert_eq!(result.report.summary.files_scanned, 1);
         assert_eq!(result.report.summary.forms_compared, 1);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn analyze_emits_root_relative_form_paths() {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+        let root = std::env::temp_dir().join(format!("dry-rs-analyze-relpath-{stamp}"));
+        assert!(fs::create_dir_all(&root).is_ok());
+        assert!(fs::write(root.join("a.rs"), "fn a() { let x = 1; }\n").is_ok());
+        assert!(fs::write(root.join("b.rs"), "fn b() { let y = 2; }\n").is_ok());
+        #[expect(clippy::expect_used, reason = "test needs absolute root")]
+        let root = root.canonicalize().expect("canonicalize");
+        #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
+        let result = analyze(
+            std::slice::from_ref(&root),
+            &Config::default(),
+            &StubNormalizer { fail: false },
+            "dry-core",
+        )
+        .expect("ok");
+        assert_eq!(result.report.findings.len(), 1);
+        assert!(result.report.findings[0].members.iter().all(|m| m.path.is_relative()));
         let _ = fs::remove_dir_all(root);
     }
 

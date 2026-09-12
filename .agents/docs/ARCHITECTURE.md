@@ -244,6 +244,7 @@ flowchart TB
 | `emit/shared` must not import `expr` | Avoids a shared↔expr cycle; recursive wraps live in `expr/wrap` |
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
 | Symlink analysis roots are rejected | Avoids silent empty runs when the root itself is a link |
+| Config discovery/load do not follow symlinks | Symlinked `dry.toml` / `--config` paths are ignored or rejected |
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 | Workspace members are `dry-core`, `dry-rs`, and `dry-go` | Update this document if you add or rename crates |

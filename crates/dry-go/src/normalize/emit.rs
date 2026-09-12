@@ -124,15 +124,30 @@ fn operator_text(node: Node<'_>, source: &[u8]) -> String {
 }
 
 /// UTF-8 slice for a CST node's byte range.
+///
+/// Invalid UTF-8 (for example a Tree-sitter range that splits a codepoint on a
+/// partial CST) yields U+FFFD instead of an empty string so names and
+/// placeholders stay distinguishable.
 #[must_use]
 pub(super) fn node_text<'a>(node: Node<'_>, source: &'a [u8]) -> &'a str {
-    std::str::from_utf8(&source[node.byte_range()]).unwrap_or("")
+    decode_node_bytes(&source[node.byte_range()])
+}
+
+fn decode_node_bytes(bytes: &[u8]) -> &str {
+    std::str::from_utf8(bytes).unwrap_or("\u{FFFD}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::normalize::parse::parse_source;
+
+    #[test]
+    fn invalid_utf8_bytes_use_replacement() {
+        assert_eq!(decode_node_bytes(&[0xff, 0xfe]), "\u{FFFD}");
+        assert_eq!(decode_node_bytes(b"ok"), "ok");
+        assert_eq!(decode_node_bytes(b""), "");
+    }
 
     #[test]
     fn emit_renames_idents_consistently() {
