@@ -16,7 +16,7 @@ Canonical quality gates for this repository. Prefer
 | Tier | Steps |
 | --- | --- |
 | `lite` | `cargo fmt --all` → clippy `-D warnings` → `cargo test --workspace` |
-| `full` | `lite` + `cargo deny check` + `cargo audit` + dry-rs self-scan (**findings=0**) |
+| `full` | `lite` + `cargo deny check` + `cargo audit` + dry-rs self-scan (**findings=0**) + dry-go dogfood scan (**findings=0**) |
 
 Default when finishing substantial work or “implement the plan”: **`full`**.
 
@@ -36,4 +36,5 @@ Default when finishing substantial work or “implement the plan”: **`full`**.
 ## Success criteria
 
 - `lite`: fmt/clippy/test exit 0
-- `full`: above, plus deny/audit exit 0, dry-rs report contains `findings=0`
+- `full`: above, plus deny/audit exit 0, dry-rs report contains `findings=0`,
+  dry-go dogfood report contains `findings=0`

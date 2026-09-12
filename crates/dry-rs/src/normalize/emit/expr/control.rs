@@ -4,7 +4,7 @@ use super::super::emit_pat;
 use super::emit_expr;
 use super::wrap::{emit_labeled_block, emit_pair, emit_unary_wrap};
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 pub(super) fn emit_if(expr_if: &syn::ExprIf, placeholders: &mut PlaceholderMap) -> NormNode {
     let mut children = vec![

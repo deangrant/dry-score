@@ -15,8 +15,11 @@ format = "text"
 extensions = ["rs"]
 # Directory name components to skip while walking (relative to each root).
 # Setting this key replaces the default list entirely (it does not merge).
+# `tests` is excluded by default; override exclude to scan integration-test duplication.
 exclude = ["target", ".git", "fixtures", "tests"]
 # Drop forms smaller than this structural node count.
 min_nodes = 10
 # Drop forms spanning fewer source lines than this.
 min_lines = 3
+# Skip source files larger than this many bytes (not read or normalized).
+max_file_bytes = 2097152

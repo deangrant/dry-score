@@ -17,7 +17,9 @@ pub struct ReportSummary {
     pub type_2: u32,
     /// Findings labeled Type-3.
     pub type_3: u32,
-    /// Source files successfully read for analysis.
+    /// Files that returned `Ok` from normalize (includes ignore-file
+    /// suppressions and files with no qualifying forms; excludes size skips,
+    /// I/O failures, and parse errors).
     pub files_scanned: u32,
     /// Forms that entered comparison.
     pub forms_compared: u32,

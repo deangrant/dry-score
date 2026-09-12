@@ -6,7 +6,7 @@ use super::super::shared::{emit_path_segments, member_name};
 use super::emit_expr;
 use super::wrap::emit_optional_inner;
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 pub(super) fn emit_binary(bin: &syn::ExprBinary, placeholders: &mut PlaceholderMap) -> NormNode {
     NormNode::branch(

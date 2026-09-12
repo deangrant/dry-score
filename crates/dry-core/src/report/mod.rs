@@ -17,6 +17,8 @@ pub use text::render_text;
 pub struct Report {
     /// Wire format version.
     pub version: String,
+    /// CLI / tool name shown in the text header (for example `dry-rs`).
+    pub tool: String,
     /// Threshold used for this run.
     pub threshold: f64,
     /// Findings sorted most exact to least exact.
@@ -31,6 +33,7 @@ impl Report {
     /// Builds a v0.1 report envelope.
     #[must_use]
     pub fn new(
+        tool: impl Into<String>,
         threshold: f64,
         findings: Vec<Finding>,
         summary: ReportSummary,
@@ -38,6 +41,7 @@ impl Report {
     ) -> Self {
         Self {
             version: "0.1".to_owned(),
+            tool: tool.into(),
             threshold,
             findings,
             summary,
@@ -71,7 +75,13 @@ mod tests {
             parse_warnings: 1,
             ..ReportSummary::default()
         };
-        Report::new(0.85, vec![finding], summary, vec!["warn".to_owned()])
+        Report::new(
+            "dry-rs",
+            0.85,
+            vec![finding],
+            summary,
+            vec!["warn".to_owned()],
+        )
     }
 
     #[test]
@@ -89,13 +99,24 @@ mod tests {
     #[test]
     fn render_json_round_trips_version() {
         let json = render_json(&sample_report());
+        assert!(json.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts serialize ok")]
+        let json = json.expect("ok");
         assert!(json.contains("\"version\": \"0.1\""));
+        assert!(json.contains("\"tool\": \"dry-rs\""));
     }
 
     #[test]
     fn render_text_skips_empty_tiers() {
-        let report = Report::new(0.5, Vec::new(), ReportSummary::default(), Vec::new());
+        let report = Report::new(
+            "dry-go",
+            0.5,
+            Vec::new(),
+            ReportSummary::default(),
+            Vec::new(),
+        );
         let text = render_text(&report);
+        assert!(text.contains("dry-go report"));
         assert!(!text.contains("## auto_refactor"));
         assert!(!text.contains("## warnings"));
     }

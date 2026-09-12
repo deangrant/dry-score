@@ -6,7 +6,7 @@ use super::wrap::{
     emit_labeled_block, emit_optional_inner, emit_pair, emit_range_like, emit_unary_wrap,
 };
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 pub(super) fn emit_break(
     expr_break: &syn::ExprBreak,

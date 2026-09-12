@@ -1,6 +1,15 @@
 use super::*;
 use crate::domain::{FormKind, FormSpan};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+
+fn bag(fps: &[u64]) -> BTreeMap<u64, u32> {
+    let mut map = BTreeMap::new();
+    for &fp in fps {
+        *map.entry(fp).or_default() += 1;
+    }
+    map
+}
 
 fn form(id: u64, nodes: u32, fps: &[u64], idents: &[&str]) -> NormalizedForm {
     form_kind(id, nodes, fps, idents, FormKind::Production)
@@ -14,7 +23,7 @@ fn form_kind(id: u64, nodes: u32, fps: &[u64], idents: &[&str], kind: FormKind) 
         span: FormSpan::new(1, 10),
         kind,
         node_count: nodes,
-        fingerprints: fps.iter().copied().collect(),
+        fingerprints: bag(fps),
         ident_trace: idents.iter().map(|s| (*s).to_owned()).collect(),
     }
 }
@@ -44,6 +53,45 @@ fn exact_bucket_clusters_identical_sets() {
         form(2, 10, &[1, 2, 3], &["y"]),
     ];
     assert_compare(&forms, 0.85, crate::domain::CloneType::Type2, true);
+}
+
+#[test]
+fn exact_cluster_splits_type1_from_renamed_singleton() {
+    let forms = [
+        form(1, 10, &[1, 2, 3], &["x"]),
+        form(2, 10, &[1, 2, 3], &["x"]),
+        form(3, 10, &[1, 2, 3], &["y"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type1);
+    assert_eq!(findings[0].members.len(), 2);
+}
+
+#[test]
+fn exact_cluster_emits_type1_and_type2_leftovers() {
+    let forms = [
+        form(1, 10, &[1, 2, 3], &["a"]),
+        form(2, 10, &[1, 2, 3], &["a"]),
+        form(3, 10, &[1, 2, 3], &["b"]),
+        form(4, 10, &[1, 2, 3], &["c"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 2);
+    assert!(findings.iter().any(|f| f.clone_type == crate::domain::CloneType::Type1));
+    assert!(findings.iter().any(|f| f.clone_type == crate::domain::CloneType::Type2));
+    let type1 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type1);
+    assert!(type1.is_some_and(|f| f.members.len() == 2));
+    let type2 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type2);
+    assert!(type2.is_some_and(|f| f.members.len() == 2));
+}
+
+#[test]
+fn distinct_bags_get_distinct_bucket_keys() {
+    let left = form(1, 10, &[1, 2], &["x"]);
+    let right = form(2, 10, &[3], &["y"]);
+    assert_ne!(left.bucket_key(), right.bucket_key());
+    assert_ne!(left.fingerprints, right.fingerprints);
 }
 
 #[test]
@@ -80,6 +128,13 @@ fn near_miss_skips_below_threshold() {
 #[test]
 fn zero_threshold_keeps_window_open() {
     assert!(within_jaccard_window(1, 100, 0.0));
+}
+
+#[test]
+fn jaccard_window_orders_sizes() {
+    assert!(!within_jaccard_window(2, 20, 0.9));
+    assert!(!within_jaccard_window(20, 2, 0.9));
+    assert!(within_jaccard_window(5, 5, 0.9));
 }
 
 #[test]
@@ -123,10 +178,30 @@ fn idents_match_empty_indices() {
 }
 
 #[test]
-fn colliding_bucket_keys_without_identical_sets() {
-    // 1 ^ 2 == 3, so these share a bucket key but not a fingerprint set.
-    let forms = [form(1, 10, &[1, 2], &["x"]), form(2, 10, &[3], &["y"])];
-    assert!(compare(&forms, 0.99).is_empty());
+fn differing_multiplicity_is_not_exact_match() {
+    let left = NormalizedForm {
+        id: 1,
+        name: "f1".to_owned(),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: 10,
+        fingerprints: BTreeMap::from([(1, 2), (2, 1)]),
+        ident_trace: vec!["x".to_owned()],
+    };
+    let right = NormalizedForm {
+        id: 2,
+        name: "f2".to_owned(),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: 10,
+        fingerprints: BTreeMap::from([(1, 1), (2, 1)]),
+        ident_trace: vec!["y".to_owned()],
+    };
+    let findings = compare(&[left, right], 0.5);
+    assert!(findings.iter().all(|f| f.score < 1.0));
+    assert!(!findings.is_empty());
 }
 
 #[test]
@@ -153,16 +228,33 @@ fn near_miss_skips_out_of_window_shared_fingerprint() {
 }
 
 #[test]
-fn near_miss_claims_clique_once() {
-    let forms = [
+fn near_miss_clusters_clique_and_chain_components() {
+    // Clique: all pairs near-miss. Chain: A~B and B~C only (A~C below threshold).
+    let clique = [
         form(1, 4, &[1, 2, 3, 4], &["a"]),
         form(2, 4, &[1, 2, 3, 5], &["a"]),
         form(3, 4, &[1, 2, 3, 6], &["a"]),
     ];
-    let findings = compare(&forms, 0.5);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].members.len(), 2);
-    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type3);
+    let clique_findings = compare(&clique, 0.5);
+    assert_eq!(clique_findings.len(), 1);
+    assert_eq!(clique_findings[0].members.len(), 3);
+    assert_eq!(
+        clique_findings[0].clone_type,
+        crate::domain::CloneType::Type3
+    );
+
+    let chain = [
+        form(1, 4, &[1, 2, 3, 4], &["a"]),
+        form(2, 4, &[1, 2, 3, 5], &["a"]),
+        form(3, 4, &[2, 3, 5, 6], &["a"]),
+    ];
+    let chain_findings = compare(&chain, 0.5);
+    assert_eq!(chain_findings.len(), 1);
+    assert_eq!(chain_findings[0].members.len(), 3);
+    assert_eq!(
+        chain_findings[0].clone_type,
+        crate::domain::CloneType::Type3
+    );
 }
 
 #[test]
@@ -213,29 +305,10 @@ fn same_kind_test_twins_still_match() {
 }
 
 #[test]
-fn prefer_better_match_covers_ties_and_worse() {
-    let better = form(1, 4, &[1, 2, 3, 4], &["a"]);
-    let worse = form(2, 4, &[1, 2, 3, 4], &["a"]);
-    let first = prefer_better_match(None, &worse, 0.8);
-    assert_eq!(first.0.id, 2);
-    let tied = prefer_better_match(Some((&worse, 0.8)), &better, 0.8);
-    assert_eq!(tied.0.id, 1);
-    let kept = prefer_better_match(Some((&better, 0.9)), &worse, 0.8);
-    assert_eq!(kept.0.id, 1);
-    assert!(is_better_match(0.9, 0.8, 9, 1));
-    assert!(is_better_match(0.8, 0.8, 1, 2));
-    assert!(!is_better_match(0.8, 0.8, 3, 2));
-    assert!(!is_better_match(0.7, 0.8, 1, 2));
-}
-
-#[test]
-fn best_near_miss_ignores_fingerprints_missing_from_index() {
+fn collect_near_miss_edges_skips_missing_index_postings() {
     let left = form(1, 5, &[1, 2, 3, 4, 99], &["a"]);
     let right = form(2, 5, &[1, 2, 3, 4, 9], &["a"]);
     let remaining = vec![&left, &right];
-    let mut index = build_fingerprint_index(&remaining);
-    index.remove(&99);
-    let claimed = BTreeSet::new();
-    let best = best_near_miss(&left, 0, &remaining, &index, &claimed, 0.5);
-    assert!(best.is_some());
+    let edges = collect_near_miss_edges(&remaining, 0.5);
+    assert_eq!(edges.len(), 1);
 }

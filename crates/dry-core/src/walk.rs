@@ -97,6 +97,12 @@ fn collect_meta(
     out: &mut Vec<PathBuf>,
 ) -> Result<(), WalkError> {
     if meta.file_type().is_symlink() {
+        if path == root {
+            return Err(WalkError::new(format!(
+                "analysis root must not be a symlink: {}",
+                path.display()
+            )));
+        }
         return Ok(());
     }
     if meta.is_file() {
@@ -301,6 +307,26 @@ mod tests {
         assert!(symlink(".", base.join("loop")).is_ok());
         let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
         assert_walk_len(&base, &options, 2);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn walk_symlink_root_errors() {
+        use std::os::unix::fs::symlink;
+        let base = temp_project();
+        let link = std::env::temp_dir().join(format!(
+            "dry-rs-walk-root-link-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0)
+        ));
+        assert!(symlink(&base, &link).is_ok());
+        let options = WalkOptions::new(vec!["rs".to_owned()], Vec::new());
+        let result = collect_source_files(std::slice::from_ref(&link), &options);
+        assert!(result.is_err());
+        #[expect(clippy::expect_used, reason = "test asserts walk error")]
+        let err = result.expect_err("symlink root");
+        assert!(err.to_string().contains("symlink"));
+        let _ = fs::remove_file(link);
         let _ = fs::remove_dir_all(base);
     }
 

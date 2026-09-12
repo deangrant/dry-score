@@ -1,0 +1,69 @@
+name: dry-go
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: dry-go-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  dry-go:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install toolchain
+        uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8
+        with:
+          toolchain: "1.94.0"
+
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+
+      - name: Build dry-go
+        run: cargo build --release -p dry-go --locked
+
+      - name: Run structural duplication analysis on dogfood
+        run: |
+          set -euo pipefail
+          report="$(
+            ./target/release/dry-go \
+              crates/dry-go/dogfood \
+              --format both \
+              --json-out dry-go-report.json \
+              --no-fail-on-findings
+          )"
+          printf '%s\n' "$report"
+          if ! printf '%s\n' "$report" | grep -q 'findings=0'; then
+            echo "dry-go reported findings (expected findings=0)" >&2
+            exit 1
+          fi
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: dry-go-report
+          path: dry-go-report.json
+          if-no-files-found: ignore
+
+      - name: Write step summary
+        if: always()
+        run: |
+          {
+            echo "## dry-go"
+            echo
+            ./target/release/dry-go \
+              crates/dry-go/dogfood \
+              --format text \
+              --no-fail-on-findings
+          } >> "$GITHUB_STEP_SUMMARY"

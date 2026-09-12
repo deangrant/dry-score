@@ -8,7 +8,7 @@ mod wrap;
 use syn::Expr;
 
 use crate::normalize::placeholders::PlaceholderMap;
-use crate::normalize::tree::NormNode;
+use dry_core::NormNode;
 
 use super::lit_label;
 use super::mac::emit_macro;
@@ -77,7 +77,7 @@ fn try_emit_control_atom(expr: &Expr, placeholders: &mut PlaceholderMap) -> Opti
 fn try_emit_macro(expr: &Expr, placeholders: &mut PlaceholderMap) -> Option<NormNode> {
     // dry-rs:ignore. CC-split expr dispatch shells; parallel shape is intentional.
     match expr {
-        Expr::Macro(mac) => Some(emit_macro(&mac.mac, placeholders)),
+        Expr::Macro(mac) => Some(emit_macro(&mac.mac, placeholders, emit_expr)),
         _ => None,
     }
 }

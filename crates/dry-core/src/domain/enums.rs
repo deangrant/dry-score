@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub enum FormKind {
     /// Ordinary production code.
     Production,
-    /// Test harness code (`#[test]` / `#[cfg(test)]`).
+    /// Test harness code (`#[test]`, `#[…::test]`, `#[cfg(test)]`, compound cfgs).
     Test,
 }
 

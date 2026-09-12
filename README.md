@@ -1,12 +1,12 @@
 # dry-score
 
 dry-score finds **structural clones** in Rust source. It compares normalized AST
-forms—not raw text—scores pairs with Jaccard similarity over subtree
-fingerprints, and routes findings into agentic tiers for CI and automation.
+forms—not raw text—scores pairs with multiset Jaccard similarity over subtree
+fingerprint bags, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
-The shipped CLI is **`dry-rs`**.
+The shipped CLIs are **`dry-rs`** (Rust) and **`dry-go`** (Go).
 
 ## Requirements
 
@@ -53,6 +53,8 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--format text\|json\|both` | Human summary, JSON envelope, or both (default `text`) |
 | `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
 | `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
+| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots) |
+| `--exclude NAME[,NAME]...` | Replace `walk.exclude` (comma-separated directory names) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
 | `--json-out PATH` | When `--format both`, write JSON to this path |
@@ -60,7 +62,7 @@ If you omit `PATH`, dry-rs analyzes `.`.
 
 Walk-up discovery loads `dry.toml` from the current directory or a parent unless
 you pass `--config`. Analysis roots are trusted local trees; the walker does
-**not** follow symlinks.
+**not** follow symlinks, and a symlink root is an error.
 
 ## Configuration
 
@@ -76,9 +78,11 @@ Defaults match the table below.
 | `[walk]` | `exclude` | `["target", ".git", "fixtures", "tests"]` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
+| `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
 Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults.
+with the defaults. The default list includes `tests`, so integration-test
+duplication is not scanned unless you override `walk.exclude`.
 
 ## How detection works
 
@@ -92,15 +96,20 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
   Type-1 versus Type-2.
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control flow, operators, and patterns keep structural labels.
-- Macros fingerprint as name + delimiter + token-tree shape (not expansion).
-- Each subtree hashes to a `u64` (fixed FNV-1a); the set of those hashes is the
-  fingerprint.
+- Macros: an allowlist (`vec`, `assert*`, `format`, `print*`/`eprint*`, `dbg`,
+  `matches`, …) expands to normalized expression children; other macros keep
+  name + delimiter + token-tree shape.
+- Closures are extracted as named forms (`{parent}.$closure:L{line}`), in
+  addition to remaining embedded in the parent body.
+- Each subtree hashes to a `u64` (fixed FNV-1a); the bag of those hashes
+  (hash → multiplicity) is the fingerprint.
 
 ### Match
 
-1. Identical fingerprint sets score `1.0` (exact buckets).
-2. Remaining forms use an inverted fingerprint index and greedy near-miss
-   Jaccard (with a set-size window).
+1. Identical fingerprint bags score `1.0` (exact buckets).
+2. Remaining forms use an inverted fingerprint index and connected-component
+   near-miss multiset Jaccard (window on total bag size; score is the minimum
+   edge Jaccard).
 3. Production and test forms (`FormKind`) never pair.
 4. Findings sort most exact → least exact.
 
@@ -131,7 +140,7 @@ comments and string substrings do not count.
 | --- | --- | --- |
 | `0` | Success (including `--help`) | Nothing required |
 | `1` | Findings present and fail-on-findings is on | Inspect the report; fix clones or disable fail-on for report-only runs |
-| `2` | Usage, config, analyze, or write error | Fix flags or `dry.toml`; check paths and permissions |
+| `2` | Usage, config, analyze, write, or JSON serialize error | Fix flags or `dry.toml`; check paths and permissions. JSON emit fails closed (no alternate error schema). |
 
 ## Fixtures
 
@@ -158,7 +167,7 @@ Local parity:
 
 ```bash
 ./scripts/verify.sh lite   # fmt, clippy, test
-./scripts/verify.sh full   # lite + deny, audit, dry-rs findings=0
+./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go dogfood findings=0
 ```
 
 Contributor conventions: [AGENTS.md](AGENTS.md).
@@ -167,12 +176,26 @@ Contributor conventions: [AGENTS.md](AGENTS.md).
 
 | Crate | Role |
 | --- | --- |
-| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, reporters (no AST deps) |
-| [`crates/dry-rs`](crates/dry-rs) | CLI and Rust `syn` adapter |
+| [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner, reporters (no AST deps) |
+| [`crates/dry-rs`](crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
+| [`crates/dry-go`](crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 
-Future language adapters implement `LanguageNormalizer` and reuse `dry-core`
+Language adapters implement `LanguageNormalizer` and reuse `dry-core`
 comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
 and module map.
+
+### Go (`dry-go`)
+
+```bash
+cargo build --release -p dry-go
+./target/release/dry-go path/to/module
+```
+
+`dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
+`// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
+grammar at build time); recoverable syntax errors soft-fail with a partial CST
+warning. Full verify and CI dogfood scan
+[`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter itself is Rust.
 
 ## License
 
