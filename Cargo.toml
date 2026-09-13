@@ -13,7 +13,7 @@ toml = "1.1"
 syn = { version = "3", features = ["full", "visit", "extra-traits"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 dry-core = { path = "crates/dry-core", version = "0.1.0" }
-tree-sitter = "0.25"
+tree-sitter = "0.26"
 tree-sitter-go = "0.25"
 
 [workspace.lints.rust]
