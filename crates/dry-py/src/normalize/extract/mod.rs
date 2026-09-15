@@ -101,19 +101,25 @@ fn class_name_from(node: Node<'_>, source: &[u8]) -> Option<String> {
 }
 
 fn binding_name_from(node: Node<'_>, source: &[u8]) -> Option<String> {
-    if node.kind() != "assignment" && node.kind() != "pair" {
-        return None;
-    }
-    let field = if node.kind() == "assignment" {
-        "left"
-    } else {
-        "key"
-    };
+    let field = binding_field(node.kind())?;
     let left = node.child_by_field_name(field)?;
-    if left.kind() == "identifier" || left.kind() == "string" {
-        return Some(super::emit::node_text(left, source).to_owned());
+    binding_ident_text(left, source)
+}
+
+fn binding_field(kind: &str) -> Option<&'static str> {
+    match kind {
+        "assignment" => Some("left"),
+        "pair" => Some("key"),
+        _ => None,
     }
-    None
+}
+
+fn binding_ident_text(left: Node<'_>, source: &[u8]) -> Option<String> {
+    if left.kind() == "identifier" || left.kind() == "string" {
+        Some(super::emit::node_text(left, source).to_owned())
+    } else {
+        None
+    }
 }
 
 pub(super) fn push_form(body: Node<'_>, name: &str, ctx: &mut ExtractCtx<'_>) {
@@ -218,6 +224,32 @@ def host(n):
         assert!(
             nested_forms.iter().any(|f| f.name.contains("right")),
             "lambda forms={nested_forms:?}"
+        );
+
+        let pair_src = r#"def with_pairs():
+    funcs = {
+        "left": lambda n: (
+            (0 - n if n < 0 else n) + 1
+        ),
+    }
+    return funcs["left"](3)
+"#;
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let pair_tree = parse_source(pair_src).expect("parse");
+        let pair_forms = extract_forms(
+            pair_tree.tree.root_node(),
+            Path::new("pair.py"),
+            pair_src.as_bytes(),
+            pair_src,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            pair_forms
+                .iter()
+                .any(|f| f.name.contains("left") || f.name.contains("\"left\"")),
+            "pair binding forms={pair_forms:?}"
         );
     }
 

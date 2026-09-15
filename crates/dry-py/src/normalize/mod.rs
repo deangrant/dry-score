@@ -80,17 +80,23 @@ impl LanguageNormalizer for PyNormalizer {
 /// Classifies production versus test from Python path conventions.
 #[must_use]
 pub fn kind_from_path(path: &Path) -> FormKind {
+    if is_test_filename(path) || has_test_path_component(path) {
+        FormKind::Test
+    } else {
+        FormKind::Production
+    }
+}
+
+fn is_test_filename(path: &Path) -> bool {
     let name = path.file_name().and_then(|s| s.to_str()).unwrap_or_default();
-    if name.starts_with("test_") || name.ends_with("_test.py") {
-        return FormKind::Test;
-    }
-    for component in path.components() {
+    name.starts_with("test_") || name.ends_with("_test.py")
+}
+
+fn has_test_path_component(path: &Path) -> bool {
+    path.components().any(|component| {
         let comp = component.as_os_str();
-        if comp == "tests" || comp == "test" {
-            return FormKind::Test;
-        }
-    }
-    FormKind::Production
+        comp == "tests" || comp == "test"
+    })
 }
 
 /// Stub files end in `.pyi` and are skipped (no executable bodies).

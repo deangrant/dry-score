@@ -107,17 +107,35 @@ fn try_emit_keyword_leaf(node: Node<'_>) -> Option<NormNode> {
 }
 
 fn structural_label(node: Node<'_>, source: &[u8]) -> String {
+    // dry-rs:ignore. CC-driven label family dispatch; parallel shape is intentional.
+    try_bin_label(node, source)
+        .or_else(|| try_unary_label(node, source))
+        .or_else(|| try_assign_label(node, source))
+        .unwrap_or_else(|| node.kind().to_owned())
+}
+
+fn try_bin_label(node: Node<'_>, source: &[u8]) -> Option<String> {
     match node.kind() {
         "binary_operator" | "comparison_operator" | "boolean_operator" => {
-            format!("bin:{}", operator_text(node, source))
+            Some(format!("bin:{}", operator_text(node, source)))
         }
-        "unary_operator" | "not_operator" => {
-            format!("unary:{}", operator_text(node, source))
-        }
+        _ => None,
+    }
+}
+
+fn try_unary_label(node: Node<'_>, source: &[u8]) -> Option<String> {
+    match node.kind() {
+        "unary_operator" | "not_operator" => Some(format!("unary:{}", operator_text(node, source))),
+        _ => None,
+    }
+}
+
+fn try_assign_label(node: Node<'_>, source: &[u8]) -> Option<String> {
+    match node.kind() {
         "assignment" | "augmented_assignment" => {
-            format!("assign:{}", operator_text(node, source))
+            Some(format!("assign:{}", operator_text(node, source)))
         }
-        other => other.to_owned(),
+        _ => None,
     }
 }
 
@@ -198,6 +216,20 @@ mod tests {
         let mut placeholders = PlaceholderMap::default();
         let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
         assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
+    }
+
+    #[test]
+    fn emit_covers_comparison_boolean_not_and_augmented() {
+        let src = r"def demo(a, b):
+    if a < b and not a:
+        a += 1
+    return a == b or a
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(src).expect("parse");
+        let mut placeholders = PlaceholderMap::default();
+        let node = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
+        assert_eq!(node.label, "module");
     }
 
     #[test]
