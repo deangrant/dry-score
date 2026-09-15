@@ -74,7 +74,8 @@ discover files → parse/normalize → fingerprint index → match → report
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
-- Default `walk.exclude` is `target`, `.git`, `fixtures` (replacement list, not
+- Default `walk.exclude` is `target`, `.git`, `fixtures`, `node_modules`,
+  `vendor`, `.venv`, `venv`, `dist`, `__pycache__` (replacement list, not
   merge). Add `tests` explicitly to skip test trees.
 - Walker does **not** follow symlinks; a symlink analysis root errors.
 - Go / TypeScript / Python parse fails closed on `has_error` (no forms; analyze

@@ -115,6 +115,12 @@ fn default_excludes() -> Vec<String> {
         "target".to_owned(),
         ".git".to_owned(),
         "fixtures".to_owned(),
+        "node_modules".to_owned(),
+        "vendor".to_owned(),
+        ".venv".to_owned(),
+        "venv".to_owned(),
+        "dist".to_owned(),
+        "__pycache__".to_owned(),
     ]
 }
 
@@ -250,6 +256,12 @@ mod tests {
                 "target".to_owned(),
                 ".git".to_owned(),
                 "fixtures".to_owned(),
+                "node_modules".to_owned(),
+                "vendor".to_owned(),
+                ".venv".to_owned(),
+                "venv".to_owned(),
+                "dist".to_owned(),
+                "__pycache__".to_owned(),
             ]
         );
     }

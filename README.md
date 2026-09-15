@@ -78,13 +78,14 @@ Defaults match the table below.
 | `[gate]` | `fail_on_findings` | `false` |
 | `[output]` | `format` | `"text"` |
 | `[walk]` | `extensions` | `["rs"]` |
-| `[walk]` | `exclude` | `["target", ".git", "fixtures"]` |
+| `[walk]` | `exclude` | `["target", ".git", "fixtures", "node_modules", "vendor", ".venv", "venv", "dist", "__pycache__"]` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
 | `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
 Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults. Add `"tests"` to skip integration-test trees if desired.
+with the defaults. Defaults skip common dependency and build dirs across Rust,
+Node, Go, and Python. Add `"tests"` to skip integration-test trees if desired.
 
 ## How detection works
 
