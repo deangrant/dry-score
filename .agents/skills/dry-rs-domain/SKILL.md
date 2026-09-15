@@ -66,8 +66,8 @@ discover files → parse/normalize → fingerprint index → match → report
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
 - Default `walk.exclude` includes `tests` (replacement list, not merge).
 - Walker does **not** follow symlinks; a symlink analysis root errors.
-- Go / TypeScript parse soft-fails on `has_error` and records
-  `NormalizeOutcome.warnings`.
+- Go / TypeScript parse fails closed on `has_error` (no forms; analyze records
+  a warning), matching Rust `syn` parse failure.
 - Full verify includes dry-go dogfood under
   [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/) and dry-ts
   dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/).

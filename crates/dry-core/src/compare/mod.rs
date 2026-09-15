@@ -104,11 +104,13 @@ fn push_cluster_if_pair(
         return;
     }
     let (identical, leftovers) = partition_by_idents(forms, group);
-    for ident_group in identical {
-        push_exact_finding(forms, &ident_group, claimed, threshold, true, findings);
+    for ident_group in &identical {
+        push_exact_finding(forms, ident_group, claimed, threshold, true, findings);
     }
-    if leftovers.len() >= 2 {
-        push_exact_finding(forms, &leftovers, claimed, threshold, false, findings);
+    // Renamed leftovers share the bag with Type-1 siblings; emit Type-2 for the
+    // full kind-group so a singleton rename is not dropped after Type-1 claims.
+    if !leftovers.is_empty() {
+        push_exact_finding(forms, group, claimed, threshold, false, findings);
     }
 }
 

@@ -55,6 +55,11 @@ impl LanguageNormalizer for TsNormalizer {
             });
         }
         let parsed = parse_source(path, source)?;
+        if parsed.has_error {
+            return Err(NormalizeError::new(
+                "parse error in TypeScript source; forms discarded",
+            ));
+        }
         let forms = extract_forms(
             parsed.tree.root_node(),
             path,
@@ -64,12 +69,10 @@ impl LanguageNormalizer for TsNormalizer {
             self.min_lines,
             next_id,
         );
-        let mut warnings = Vec::new();
-        if parsed.has_error {
-            warnings
-                .push("parse error in TypeScript source; extracted from partial CST".to_owned());
-        }
-        Ok(NormalizeOutcome { forms, warnings })
+        Ok(NormalizeOutcome {
+            forms,
+            warnings: Vec::new(),
+        })
     }
 }
 

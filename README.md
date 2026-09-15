@@ -196,9 +196,10 @@ cargo build --release -p dry-go
 
 `dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
 `// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
-grammar at build time); recoverable syntax errors soft-fail with a partial CST
-warning. Full verify and CI dogfood scan
-[`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter itself is Rust.
+grammar at build time); syntax errors discard the file’s forms and surface as
+analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
+dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter
+itself is Rust.
 
 ### TypeScript (`dry-ts`)
 
@@ -210,9 +211,10 @@ cargo build --release -p dry-ts
 `dry-ts` forces `walk.extensions` to `["ts", "tsx", "mts", "cts"]` (not `.js` /
 `.jsx`). Declaration files (`*.d.ts` / `*.d.mts` / `*.d.cts`) are skipped.
 Suppress with full-line `// dry-ts:ignore` / `// dry-ts:ignore-file`. Parsing
-uses Tree-sitter TypeScript / TSX grammars; recoverable syntax errors soft-fail
-with a partial CST warning. Full verify and CI dogfood scan
-[`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/). The adapter itself is Rust.
+uses Tree-sitter TypeScript / TSX grammars; syntax errors discard the file’s
+forms and surface as analyze warnings (same fail-closed contract as `dry-rs`).
+Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/).
+The adapter itself is Rust.
 
 ## License
 
