@@ -39,6 +39,8 @@ fn parse_switches() {
         "12",
         "--min-lines",
         "5",
+        "--max-file-bytes",
+        "4096",
         "--json-out",
         "out.json",
     ]);
@@ -48,6 +50,7 @@ fn parse_switches() {
     assert!(!parsed.config.gate.fail_on_findings);
     assert_eq!(parsed.config.walk.min_nodes, 12);
     assert_eq!(parsed.config.walk.min_lines, 5);
+    assert_eq!(parsed.config.walk.max_file_bytes, 4096);
     assert_eq!(parsed.json_out.as_deref(), Some(Path::new("out.json")));
 }
 
@@ -59,6 +62,19 @@ fn parse_errors() {
     assert!(parse(&["--min-nodes", "x"]).is_err());
     assert!(parse(&["--min-lines"]).is_err());
     assert!(parse(&["--min-lines", "x"]).is_err());
+}
+
+#[test]
+fn max_file_bytes_flag_errors() {
+    assert!(parse(&["--max-file-bytes"]).is_err());
+    assert!(parse(&["--max-file-bytes", "x"]).is_err());
+}
+
+#[test]
+fn walk_numeric_zero_rejected() {
+    assert!(parse(&["--min-nodes", "0"]).is_err());
+    assert!(parse(&["--min-lines", "0"]).is_err());
+    assert!(parse(&["--max-file-bytes", "0"]).is_err());
 }
 
 #[test]
@@ -83,6 +99,30 @@ fn help_exits_success_via_stdout() {
 }
 
 #[test]
+fn help_lists_max_file_bytes_and_extensions() {
+    let text = help_text(&opts());
+    assert!(text.contains("--max-file-bytes N"));
+    assert!(text.contains("--extensions EXT"));
+}
+
+#[test]
+fn help_notes_fixed_extensions_when_forced() {
+    let err = parse_args(
+        args(&["--help"]),
+        &CliOptions {
+            bin_name: "dry-go",
+            force_extensions: Some(vec!["go".to_owned()]),
+        },
+    );
+    assert!(err.is_err());
+    #[expect(clippy::expect_used, reason = "test")]
+    let err = err.expect_err("help");
+    assert!(err.message.contains("extensions fixed to go"));
+    assert!(err.message.contains("--extensions unsupported"));
+    assert!(!err.message.contains("--extensions EXT"));
+}
+
+#[test]
 fn threshold_bounds() {
     assert!(parse(&["--threshold", "0.0"]).is_ok());
     assert!(parse(&["--threshold", "1.0"]).is_ok());
@@ -98,7 +138,7 @@ fn default_path_is_dot() {
     let parsed = parsed.expect("ok");
     assert_eq!(parsed.paths, vec![PathBuf::from(".")]);
     assert!(!CliError::usage("x").to_string().is_empty());
-    assert!(!help_text("dry-core-test").is_empty());
+    assert!(!help_text(&opts()).is_empty());
 }
 
 #[test]
@@ -130,7 +170,7 @@ fn parse_exclude_only_replaces_defaults() {
 }
 
 #[test]
-fn force_extensions_overrides_cli_extensions() {
+fn force_extensions_rejects_cli_extensions() {
     let parsed = parse_args(
         args(&["--extensions", "rs"]),
         &CliOptions {
@@ -138,10 +178,11 @@ fn force_extensions_overrides_cli_extensions() {
             force_extensions: Some(vec!["go".to_owned()]),
         },
     );
-    assert!(parsed.is_ok());
+    assert!(parsed.is_err());
     #[expect(clippy::expect_used, reason = "test")]
-    let parsed = parsed.expect("ok");
-    assert_eq!(parsed.config.walk.extensions, vec!["go".to_owned()]);
+    let err = parsed.expect_err("usage");
+    assert!(err.message.contains("--extensions is not supported"));
+    assert!(err.message.contains("dry-go"));
 }
 
 #[test]

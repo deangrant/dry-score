@@ -33,6 +33,7 @@ jobs:
         run: cargo build --release -p dry-go --locked
 
       - name: Run structural duplication analysis on dogfood
+        # Dogfood includes clone decoys under vendor/ to gate default excludes.
         run: |
           set -euo pipefail
           report="$(

@@ -52,9 +52,10 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--config PATH` | Load knobs from a TOML file |
 | `--threshold FLOAT` | Minimum Jaccard score to report (default `0.85`; must be in `[0.0, 1.0]`) |
 | `--format text\|json\|both` | Human summary, JSON envelope, or both (default `text`) |
-| `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
-| `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
-| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots) |
+| `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`; must be `>= 1`) |
+| `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`; must be `>= 1`) |
+| `--max-file-bytes N` | Skip source files larger than N bytes (default `2097152`; must be `>= 1`) |
+| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots; unsupported on language-forced adapters) |
 | `--exclude NAME[,NAME]...` | Merge names into `walk.exclude` (keeps built-in defaults) |
 | `--exclude-only NAME[,NAME]...` | Replace `walk.exclude` entirely (drops built-in defaults) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
@@ -214,13 +215,14 @@ cargo build --release -p dry-go
 ./target/release/dry-go path/to/module
 ```
 
-`dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
-`// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
-grammar at build time); syntax errors discard the file’s forms and surface as
-analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
-dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/) (tiny unique
-non-clone smoke tree; clone types are covered by fixtures, not dogfood breadth).
-The adapter itself is Rust.
+`dry-go` forces `walk.extensions` to `["go"]` (CLI `--extensions` is rejected).
+Suppress with full-line `// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses
+Tree-sitter (C grammar at build time); syntax errors discard the file’s forms
+and surface as analyze warnings (same fail-closed contract as `dry-rs`). Full
+verify and CI dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/)
+(tiny unique non-clone smoke tree plus exclude decoys under `vendor/`; clone
+types are covered by fixtures, not dogfood breadth). The adapter itself is
+Rust.
 
 ### TypeScript (`dry-ts`)
 
@@ -230,13 +232,14 @@ cargo build --release -p dry-ts
 ```
 
 `dry-ts` forces `walk.extensions` to `["ts", "tsx", "mts", "cts"]` (not `.js` /
-`.jsx`). Declaration files (`*.d.ts` / `*.d.mts` / `*.d.cts`) are skipped.
-Suppress with full-line `// dry-ts:ignore` / `// dry-ts:ignore-file`. Parsing
-uses Tree-sitter TypeScript / TSX grammars; syntax errors discard the file’s
-forms and surface as analyze warnings (same fail-closed contract as `dry-rs`).
-Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/)
-(tiny unique non-clone smoke tree; clone types are covered by fixtures, not
-dogfood breadth). The adapter itself is Rust.
+`.jsx`; CLI `--extensions` is rejected). Declaration files (`*.d.ts` / `*.d.mts` /
+`*.d.cts`) are skipped. Suppress with full-line `// dry-ts:ignore` /
+`// dry-ts:ignore-file`. Parsing uses Tree-sitter TypeScript / TSX grammars;
+syntax errors discard the file’s forms and surface as analyze warnings (same
+fail-closed contract as `dry-rs`). Full verify and CI dogfood scan
+[`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/) (tiny unique non-clone smoke
+tree plus exclude decoys under `node_modules/`; clone types are covered by
+fixtures, not dogfood breadth). The adapter itself is Rust.
 
 ### Python (`dry-py`)
 
@@ -245,13 +248,14 @@ cargo build --release -p dry-py
 ./target/release/dry-py path/to/package
 ```
 
-`dry-py` forces `walk.extensions` to `["py"]`. Stub files (`*.pyi`) are skipped.
-Suppress with full-line `# dry-py:ignore` / `# dry-py:ignore-file`. Parsing uses
-Tree-sitter Python; syntax errors discard the file’s forms and surface as
-analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
-dogfood scan [`crates/dry-py/dogfood/`](crates/dry-py/dogfood/) (tiny unique
-non-clone smoke tree; clone types are covered by fixtures, not dogfood breadth).
-The adapter itself is Rust.
+`dry-py` forces `walk.extensions` to `["py"]` (CLI `--extensions` is rejected).
+Stub files (`*.pyi`) are skipped. Suppress with full-line `# dry-py:ignore` /
+`# dry-py:ignore-file`. Parsing uses Tree-sitter Python; syntax errors discard
+the file’s forms and surface as analyze warnings (same fail-closed contract as
+`dry-rs`). Full verify and CI dogfood scan
+[`crates/dry-py/dogfood/`](crates/dry-py/dogfood/) (tiny unique non-clone smoke
+tree plus exclude decoys under `.venv/`; clone types are covered by fixtures,
+not dogfood breadth). The adapter itself is Rust.
 
 ## License
 

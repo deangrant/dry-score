@@ -21,9 +21,10 @@ Canonical quality gates for this repository. Prefer
 Go/TS/Python dogfood trees under `crates/dry-go/dogfood/`,
 `crates/dry-ts/dogfood/`, and `crates/dry-py/dogfood/` are tiny intentional
 non-clone smoke corpora (this repo has no product Go/TS/Python sources). They
-gate `findings=0` for the binaries; clone semantics are covered by adapter
-fixture integration tests and `dry-core` compare unit tests—not by dogfood
-breadth.
+include clone-shaped decoys under default exclude dirs (`vendor/`,
+`node_modules/`, `.venv/`) so exclude regressions fail the gate. They gate
+`findings=0` for the binaries; clone semantics are covered by adapter fixture
+integration tests and `dry-core` compare unit tests—not by dogfood breadth.
 
 Default when finishing substantial work or “implement the plan”: **`full`**.
 

@@ -28,7 +28,7 @@ pub use compare::compare;
 #[doc(inline)]
 pub use config::{
     Config, OutputFormat, default_excludes, discover_config, load_config, merge_excludes,
-    resolve_walk_excludes, validate_threshold,
+    resolve_walk_excludes, validate_threshold, validate_walk_numerics,
 };
 #[doc(inline)]
 pub use domain::{

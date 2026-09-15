@@ -25,4 +25,5 @@ min_nodes = 10
 # Drop forms spanning fewer source lines than this.
 min_lines = 3
 # Skip source files larger than this many bytes (not read or normalized).
+# CLI: --max-file-bytes N (must be >= 1).
 max_file_bytes = 2097152

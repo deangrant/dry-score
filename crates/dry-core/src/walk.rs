@@ -202,6 +202,16 @@ mod tests {
     }
 
     #[test]
+    fn walk_skips_vendor_subdir() {
+        let base = temp_project();
+        assert!(fs::create_dir_all(base.join("vendor/pkg")).is_ok());
+        assert!(fs::write(base.join("vendor/pkg/lib.rs"), "fn c() {}\n").is_ok());
+        let options = WalkOptions::new(vec!["rs".to_owned()], vec!["vendor".to_owned()]);
+        assert_walk_len(&base, &options, 2);
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
     fn root_under_excluded_name_is_not_skipped() {
         let root = Path::new("crates/dry-rs/tests/fixtures/type_1_exact");
         let file = root.join("main.rs");

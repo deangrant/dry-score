@@ -217,13 +217,42 @@ pub fn validate_threshold(threshold: f64) -> Result<(), ConfigError> {
     }
 }
 
+/// Ensures walk numeric knobs are at least `1`.
+///
+/// # Errors
+///
+/// Returns [`ConfigError`] when any of `min_nodes`, `min_lines`, or
+/// `max_file_bytes` is zero.
+pub fn validate_walk_numerics(walk: &WalkConfig) -> Result<(), ConfigError> {
+    if walk.min_nodes < 1 {
+        return Err(ConfigError::new(format!(
+            "walk.min_nodes must be >= 1, got {}",
+            walk.min_nodes
+        )));
+    }
+    if walk.min_lines < 1 {
+        return Err(ConfigError::new(format!(
+            "walk.min_lines must be >= 1, got {}",
+            walk.min_lines
+        )));
+    }
+    if walk.max_file_bytes < 1 {
+        return Err(ConfigError::new(format!(
+            "walk.max_file_bytes must be >= 1, got {}",
+            walk.max_file_bytes
+        )));
+    }
+    Ok(())
+}
+
 /// Loads configuration from an explicit path.
 ///
 /// # Errors
 ///
 /// Returns [`ConfigError`] when the path is a symlink or otherwise not a
-/// regular file, when the file cannot be read or parsed, or when
-/// `gate.threshold` is outside `[0.0, 1.0]`.
+/// regular file, when the file cannot be read or parsed, when
+/// `gate.threshold` is outside `[0.0, 1.0]`, or when walk numeric knobs are
+/// below `1`.
 pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     if !is_regular_file(path) {
         return Err(ConfigError::new(format!(
@@ -236,6 +265,7 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let config: Config = toml::from_str(&raw)
         .map_err(|err| ConfigError::new(format!("failed to parse {}: {err}", path.display())))?;
     validate_threshold(config.gate.threshold)?;
+    validate_walk_numerics(&config.walk)?;
     let mut config = config;
     resolve_walk_excludes(&mut config.walk);
     Ok(config)
@@ -348,6 +378,20 @@ mod tests {
     }
 
     #[test]
+    fn validate_walk_numerics_requires_positive() {
+        let mut walk = WalkConfig::default();
+        assert!(validate_walk_numerics(&walk).is_ok());
+        walk.min_nodes = 0;
+        assert!(validate_walk_numerics(&walk).is_err());
+        walk = WalkConfig::default();
+        walk.min_lines = 0;
+        assert!(validate_walk_numerics(&walk).is_err());
+        walk = WalkConfig::default();
+        walk.max_file_bytes = 0;
+        assert!(validate_walk_numerics(&walk).is_err());
+    }
+
+    #[test]
     fn load_config_rejects_out_of_range_threshold() {
         let dir = temp_dir("cfg-threshold");
         let low = dir.join("low.toml");
@@ -356,6 +400,21 @@ mod tests {
         assert!(fs::write(&high, "[gate]\nthreshold = 1.1\n").is_ok());
         assert!(load_config(&low).is_err());
         assert!(load_config(&high).is_err());
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_config_rejects_zero_walk_numerics() {
+        let dir = temp_dir("cfg-walk-zero");
+        let nodes = dir.join("nodes.toml");
+        let lines = dir.join("lines.toml");
+        let bytes = dir.join("bytes.toml");
+        assert!(fs::write(&nodes, "[walk]\nmin_nodes = 0\n").is_ok());
+        assert!(fs::write(&lines, "[walk]\nmin_lines = 0\n").is_ok());
+        assert!(fs::write(&bytes, "[walk]\nmax_file_bytes = 0\n").is_ok());
+        assert!(load_config(&nodes).is_err());
+        assert!(load_config(&lines).is_err());
+        assert!(load_config(&bytes).is_err());
         let _ = fs::remove_dir_all(dir);
     }
 
