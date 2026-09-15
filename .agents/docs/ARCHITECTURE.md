@@ -325,9 +325,10 @@ flowchart TB
 execute untrusted code. The walker does not follow file or directory symlinks,
 and rejects a symlink as an analysis root. Symlink-root refusal and related walk
 tests are exercised under `#[cfg(unix)]` (CI targets Linux); there is no
-Windows junction harness. Symlink refusal is best-effort on a **stable** tree:
-concurrent replacement of a discovered path between walk and `read_to_string`
-(TOCTOU) is out of scope for the local trusted-operator model.
+Windows junction harness. Symlink refusal is best-effort on a **stable** tree: analyze size checks use
+non-following `symlink_metadata` (matching walk), but concurrent replacement of
+a discovered path between that check and `read_to_string` (TOCTOU) is out of
+scope for the local trusted-operator model.
 `--json-out` writes or overwrites any user-supplied path and is not confined to
 analysis roots (same pattern as typical report CLIs). Residual risk is local
 filesystem read/write under the operator's credentials—not remote code

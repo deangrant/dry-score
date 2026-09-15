@@ -169,8 +169,7 @@ fn near_miss_findings(
     let components = near_miss_components(remaining.len(), &edges);
     let mut findings = Vec::new();
     for member_idxs in components {
-        let min_pair = component_pairwise_min(&remaining, &member_idxs);
-        if min_pair >= threshold {
+        if let Some(min_pair) = component_closed_min(&member_idxs, &edges) {
             findings.push(near_miss_component_finding(
                 &remaining,
                 &member_idxs,
@@ -235,18 +234,22 @@ fn group_components(n: usize, parent: &mut [usize]) -> Vec<Vec<usize>> {
     groups.into_values().filter(|members| members.len() >= 2).collect()
 }
 
-fn component_pairwise_min(remaining: &[&NormalizedForm], members: &[usize]) -> f64 {
+/// Threshold-closed when the component is a clique in the ≥-threshold edge
+/// graph (DF-prefix index already scored every such pair). Score is the min
+/// edge weight.
+fn component_closed_min(members: &[usize], edges: &[(usize, usize, f64)]) -> Option<f64> {
+    let member_set: BTreeSet<usize> = members.iter().copied().collect();
     let mut min_score = 1.0_f64;
-    for (i, &left_idx) in members.iter().enumerate() {
-        for &right_idx in &members[i + 1..] {
-            let score = jaccard(
-                &remaining[left_idx].fingerprints,
-                &remaining[right_idx].fingerprints,
-            );
+    let mut edge_count = 0_usize;
+    for &(left, right, score) in edges {
+        if member_set.contains(&left) && member_set.contains(&right) {
+            edge_count = edge_count.saturating_add(1);
             min_score = min_score.min(score);
         }
     }
-    min_score
+    let k = members.len();
+    let expected = k.saturating_mul(k.saturating_sub(1)) / 2;
+    (edge_count == expected).then_some(min_score)
 }
 
 fn emit_greedy_pair_findings(

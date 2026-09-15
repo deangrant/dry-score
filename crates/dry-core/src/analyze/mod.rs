@@ -173,7 +173,14 @@ fn merge_normalize_results(
 }
 
 fn check_file_size(path: &Path, report_path: &Path, max_file_bytes: u64) -> Result<(), String> {
-    let meta = fs::metadata(path).map_err(|err| format!("{}: {err}", report_path.display()))?;
+    let meta =
+        fs::symlink_metadata(path).map_err(|err| format!("{}: {err}", report_path.display()))?;
+    if !meta.file_type().is_file() {
+        return Err(format!(
+            "{}: not a regular file (symlink or special node)",
+            report_path.display()
+        ));
+    }
     let len = meta.len();
     if len > max_file_bytes {
         return Err(format!(
