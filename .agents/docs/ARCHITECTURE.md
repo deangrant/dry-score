@@ -120,7 +120,9 @@ A `dry-rs` run proceeds as follows:
       [`walk::collect_source_files`](../../crates/dry-core/src/walk.rs).
    3. Normalize files in parallel (skip files over `walk.max_file_bytes` with a
       warning; warn on unreadable paths; emit no forms when the file opts out).
-      Form IDs and warnings merge in walk order for deterministic compare.
+      Any parse/CST error discards **all** forms from that file (no partial
+      recovery); analyze records a warning and continues. Form IDs and warnings
+      merge in walk order for deterministic compare.
    4. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
       `gate.threshold`.
    5. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
@@ -148,7 +150,11 @@ flowchart TD
 ### Matching
 
 Identical fingerprint bags score `1.0`. Identifier traces then label the clone
-as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
+as Type-1 (same ids) or Type-2 (renamed). When an exact bag mixes identical-ident
+subgroups with renamed leftovers, Type-1 findings are emitted for the identical
+subgroups and a Type-2 finding is also emitted for the **full** bag group, so a
+form may appear in both findings. Summary counters count findings, not unique
+forms. Remaining forms use an inverted
 fingerprint index and connected-component near-miss multiset Jaccard (Type-3;
 DF-ordered occurrence prefix for candidates; score is the minimum pairwise
 Jaccard among members; components that are not threshold-closed split into

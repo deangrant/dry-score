@@ -86,6 +86,20 @@ fn exact_cluster_emits_type1_and_type2_leftovers() {
     assert!(type1.is_some_and(|f| f.members.len() == 2));
     let type2 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type2);
     assert!(type2.is_some_and(|f| f.members.len() == 4));
+    // Multi-membership: Type-1 siblings also appear in the Type-2 finding.
+    #[expect(clippy::expect_used, reason = "test asserts both clone types above")]
+    let type1 = type1.expect("type1");
+    #[expect(clippy::expect_used, reason = "test asserts both clone types above")]
+    let type2 = type2.expect("type2");
+    let type2_names: std::collections::BTreeSet<_> =
+        type2.members.iter().map(|m| m.name.as_str()).collect();
+    for member in &type1.members {
+        assert!(
+            type2_names.contains(member.name.as_str()),
+            "Type-1 member {} missing from Type-2 finding",
+            member.name
+        );
+    }
 }
 
 #[test]
@@ -265,6 +279,35 @@ fn near_miss_clusters_clique_and_splits_chain() {
         2,
         0.6,
     );
+}
+
+#[test]
+fn near_miss_large_threshold_closed_clique() {
+    use std::time::Instant;
+
+    // k=16 forms: shared mass [1,2,3,4] + one unique noise key each.
+    // Pairwise Jaccard = 4/6; all pairs ≥ 0.5 → one threshold-closed clique.
+    const K: u64 = 16;
+    let shared = [1_u64, 2, 3, 4];
+    let forms: Vec<_> = (0..K)
+        .map(|i| {
+            let mut fps = shared.to_vec();
+            fps.push(100 + i);
+            form(i + 1, 5, &fps, &["a"])
+        })
+        .collect();
+    let expected_score = 4.0 / 6.0;
+    let started = Instant::now();
+    let findings = compare(&forms, 0.5);
+    assert!(
+        started.elapsed().as_millis() < 100,
+        "large clique compare took {:?}",
+        started.elapsed()
+    );
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type3);
+    assert_eq!(findings[0].members.len(), K as usize);
+    assert!((findings[0].score - expected_score).abs() < f64::EPSILON);
 }
 
 #[test]

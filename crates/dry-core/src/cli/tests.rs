@@ -255,3 +255,29 @@ fn discovers_config_from_analysis_root_when_cwd_has_none() {
     let _ = fs::remove_dir_all(bare);
     let _ = fs::remove_dir_all(root);
 }
+
+#[test]
+fn cwd_dry_toml_wins_over_analysis_root_config() {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let cwd = std::env::temp_dir().join(format!("dry-core-cli-cwd-win-{stamp}"));
+    let root = std::env::temp_dir().join(format!("dry-core-cli-root-lose-{stamp}"));
+    assert!(fs::create_dir_all(&cwd).is_ok());
+    assert!(fs::create_dir_all(&root).is_ok());
+    assert!(fs::write(cwd.join("dry.toml"), "[gate]\nthreshold = 0.99\n").is_ok());
+    assert!(fs::write(root.join("dry.toml"), "[gate]\nthreshold = 0.50\n").is_ok());
+    let threshold = parse_threshold_under_cwd(&cwd, &root);
+    assert!((threshold - 0.99).abs() < f64::EPSILON);
+    let _ = fs::remove_dir_all(cwd);
+    let _ = fs::remove_dir_all(root);
+}
+
+fn parse_threshold_under_cwd(cwd: &Path, root: &Path) -> f64 {
+    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    assert!(env::set_current_dir(cwd).is_ok());
+    let root_s = root.to_string_lossy().into_owned();
+    let parsed = parse(&[&root_s]);
+    assert!(env::set_current_dir(previous).is_ok());
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    parsed.expect("ok").config.gate.threshold
+}

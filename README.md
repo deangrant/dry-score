@@ -116,7 +116,10 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 
 ### Match
 
-1. Identical fingerprint bags score `1.0` (exact buckets).
+1. Identical fingerprint bags score `1.0` (exact buckets). Identifier traces
+   label Type-1 (same ids) or Type-2 (renamed). When a bag mixes identical-ident
+   twins with renamed leftovers, a form may appear in both a Type-1 and a Type-2
+   finding; summary counters count findings, not unique forms.
 2. Remaining forms use an inverted fingerprint index and connected-component
    near-miss multiset Jaccard (window on total bag size; DF-ordered occurrence
    prefix for candidates; score is the minimum pairwise Jaccard among members;
