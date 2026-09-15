@@ -50,7 +50,7 @@ fn apply_threshold(...) -> Result<(), CliError> {
 ```
 
 - Span: `// dry-rs:ignore` or `// dry-rs:ignore. reason`
-- File: `// dry-rs:ignore-file` near the top of the file
+- File: `// dry-rs:ignore-file` within the first 40 lines of the file
 
 ## Prohibitions
 

@@ -345,6 +345,31 @@ fn analyze_skips_oversized_files_with_warning() {
     let _ = fs::remove_dir_all(root);
 }
 
+#[cfg(unix)]
+#[test]
+fn normalize_skips_file_symlink_with_warning() {
+    use std::os::unix::fs::symlink;
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let outside = std::env::temp_dir().join(format!("dry-rs-analyze-link-target-{stamp}"));
+    assert!(fs::write(&outside, "fn leak() { let x = 1; }\n").is_ok());
+    let link = std::env::temp_dir().join(format!("dry-rs-analyze-link-{stamp}.rs"));
+    assert!(symlink(&outside, &link).is_ok());
+    let result = normalize_file_local(
+        &link,
+        Path::new("link.rs"),
+        &StubNormalizer {
+            fail: false,
+            soft_warnings: Vec::new(),
+        },
+        u64::MAX,
+    );
+    assert!(!result.scanned);
+    assert!(result.forms.is_empty());
+    assert!(result.warnings.iter().any(|w| w.contains("not a regular file")));
+    let _ = fs::remove_file(link);
+    let _ = fs::remove_file(outside);
+}
+
 #[test]
 fn build_summary_bumps_all_variants() {
     let findings = [

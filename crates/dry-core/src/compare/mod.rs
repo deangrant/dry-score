@@ -32,17 +32,13 @@ use near_miss::{fingerprint_df_for_test, prefix_keys, scored_near_miss};
 #[must_use]
 pub fn compare(forms: &[NormalizedForm], threshold: f64) -> Vec<Finding> {
     let mut claimed = BTreeSet::new();
-    let mut findings = exact_bucket_findings(forms, &mut claimed, threshold);
+    let mut findings = exact_bucket_findings(forms, &mut claimed);
     findings.extend(near_miss_findings(forms, &mut claimed, threshold));
     sort_findings(&mut findings);
     findings
 }
 
-fn exact_bucket_findings(
-    forms: &[NormalizedForm],
-    claimed: &mut BTreeSet<u64>,
-    threshold: f64,
-) -> Vec<Finding> {
+fn exact_bucket_findings(forms: &[NormalizedForm], claimed: &mut BTreeSet<u64>) -> Vec<Finding> {
     let mut buckets: HashMap<u64, Vec<usize>> = HashMap::new();
     for (idx, form) in forms.iter().enumerate() {
         if form.fingerprints.is_empty() {
@@ -56,7 +52,7 @@ fn exact_bucket_findings(
         if indices.len() < 2 {
             continue;
         }
-        push_exact_clusters(forms, indices, claimed, threshold, &mut findings);
+        push_exact_clusters(forms, indices, claimed, &mut findings);
     }
     findings
 }
@@ -65,7 +61,6 @@ fn push_exact_clusters(
     forms: &[NormalizedForm],
     indices: &[usize],
     claimed: &mut BTreeSet<u64>,
-    threshold: f64,
     findings: &mut Vec<Finding>,
 ) {
     let mut by_set: BTreeMap<&BTreeMap<u64, u32>, Vec<usize>> = BTreeMap::new();
@@ -73,7 +68,7 @@ fn push_exact_clusters(
         by_set.entry(&forms[idx].fingerprints).or_default().push(idx);
     }
     for group in by_set.values() {
-        push_same_kind_clusters(forms, group, claimed, threshold, findings);
+        push_same_kind_clusters(forms, group, claimed, findings);
     }
 }
 
@@ -81,7 +76,6 @@ fn push_same_kind_clusters(
     forms: &[NormalizedForm],
     group: &[usize],
     claimed: &mut BTreeSet<u64>,
-    threshold: f64,
     findings: &mut Vec<Finding>,
 ) {
     let mut by_kind: BTreeMap<FormKind, Vec<usize>> = BTreeMap::new();
@@ -89,7 +83,7 @@ fn push_same_kind_clusters(
         by_kind.entry(forms[idx].kind).or_default().push(idx);
     }
     for kind_group in by_kind.values() {
-        push_cluster_if_pair(forms, kind_group, claimed, threshold, findings);
+        push_cluster_if_pair(forms, kind_group, claimed, findings);
     }
 }
 
@@ -97,7 +91,6 @@ fn push_cluster_if_pair(
     forms: &[NormalizedForm],
     group: &[usize],
     claimed: &mut BTreeSet<u64>,
-    threshold: f64,
     findings: &mut Vec<Finding>,
 ) {
     if group.len() < 2 {
@@ -105,12 +98,12 @@ fn push_cluster_if_pair(
     }
     let (identical, leftovers) = partition_by_idents(forms, group);
     for ident_group in &identical {
-        push_exact_finding(forms, ident_group, claimed, threshold, true, findings);
+        push_exact_finding(forms, ident_group, claimed, true, findings);
     }
     // Renamed leftovers share the bag with Type-1 siblings; emit Type-2 for the
     // full kind-group so a singleton rename is not dropped after Type-1 claims.
     if !leftovers.is_empty() {
-        push_exact_finding(forms, group, claimed, threshold, false, findings);
+        push_exact_finding(forms, group, claimed, false, findings);
     }
 }
 
@@ -135,13 +128,12 @@ fn push_exact_finding(
     forms: &[NormalizedForm],
     group: &[usize],
     claimed: &mut BTreeSet<u64>,
-    threshold: f64,
     idents_identical: bool,
     findings: &mut Vec<Finding>,
 ) {
     findings.push(Finding {
         clone_type: classify(1.0, idents_identical),
-        tier: classify::tier_for(1.0, threshold),
+        tier: classify::tier_for(1.0),
         score: 1.0,
         members: members_from_indices(forms, group),
     });
@@ -169,26 +161,17 @@ fn near_miss_findings(
     let components = near_miss_components(remaining.len(), &edges);
     let mut findings = Vec::new();
     for member_idxs in components {
-        let min_pair = component_pairwise_min(&remaining, &member_idxs);
-        if min_pair >= threshold {
+        if let Some(min_pair) = component_closed_min(&member_idxs, &edges) {
             findings.push(near_miss_component_finding(
                 &remaining,
                 &member_idxs,
                 min_pair,
-                threshold,
             ));
             for &idx in &member_idxs {
                 claimed.insert(remaining[idx].id);
             }
         } else {
-            emit_greedy_pair_findings(
-                &remaining,
-                &member_idxs,
-                &edges,
-                threshold,
-                claimed,
-                &mut findings,
-            );
+            emit_greedy_pair_findings(&remaining, &member_idxs, &edges, claimed, &mut findings);
         }
     }
     findings
@@ -235,25 +218,28 @@ fn group_components(n: usize, parent: &mut [usize]) -> Vec<Vec<usize>> {
     groups.into_values().filter(|members| members.len() >= 2).collect()
 }
 
-fn component_pairwise_min(remaining: &[&NormalizedForm], members: &[usize]) -> f64 {
+/// Threshold-closed when the component is a clique in the ≥-threshold edge
+/// graph (DF-prefix index already scored every such pair). Score is the min
+/// edge weight.
+fn component_closed_min(members: &[usize], edges: &[(usize, usize, f64)]) -> Option<f64> {
+    let member_set: BTreeSet<usize> = members.iter().copied().collect();
     let mut min_score = 1.0_f64;
-    for (i, &left_idx) in members.iter().enumerate() {
-        for &right_idx in &members[i + 1..] {
-            let score = jaccard(
-                &remaining[left_idx].fingerprints,
-                &remaining[right_idx].fingerprints,
-            );
+    let mut edge_count = 0_usize;
+    for &(left, right, score) in edges {
+        if member_set.contains(&left) && member_set.contains(&right) {
+            edge_count = edge_count.saturating_add(1);
             min_score = min_score.min(score);
         }
     }
-    min_score
+    let k = members.len();
+    let expected = k.saturating_mul(k.saturating_sub(1)) / 2;
+    (edge_count == expected).then_some(min_score)
 }
 
 fn emit_greedy_pair_findings(
     remaining: &[&NormalizedForm],
     member_idxs: &[usize],
     edges: &[(usize, usize, f64)],
-    threshold: f64,
     claimed: &mut BTreeSet<u64>,
     findings: &mut Vec<Finding>,
 ) {
@@ -271,12 +257,7 @@ fn emit_greedy_pair_findings(
         }
         used.insert(a);
         used.insert(b);
-        findings.push(near_miss_component_finding(
-            remaining,
-            &[a, b],
-            score,
-            threshold,
-        ));
+        findings.push(near_miss_component_finding(remaining, &[a, b], score));
         claimed.insert(remaining[a].id);
         claimed.insert(remaining[b].id);
     }
@@ -286,7 +267,6 @@ fn near_miss_component_finding(
     remaining: &[&NormalizedForm],
     member_idxs: &[usize],
     score: f64,
-    threshold: f64,
 ) -> Finding {
     let mut indices: Vec<usize> = member_idxs.to_vec();
     indices.sort_unstable();
@@ -303,7 +283,7 @@ fn near_miss_component_finding(
     members.sort_by(|a, b| (&a.path, a.start_line, &a.name).cmp(&(&b.path, b.start_line, &b.name)));
     Finding {
         clone_type: classify(score, false),
-        tier: classify::tier_for(score, threshold),
+        tier: classify::tier_for(score),
         score,
         members,
     }

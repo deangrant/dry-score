@@ -78,3 +78,31 @@ fn non_clone_has_no_findings() {
         report.findings
     );
 }
+
+#[test]
+fn nested_closures_find_type_one() {
+    assert_first_clone(
+        &analyze_fixture("nested_closures", 0.85),
+        CloneType::Type1,
+        true,
+    );
+}
+
+#[test]
+fn type_1_methods_are_auto_refactor() {
+    assert_first_clone(
+        &analyze_fixture("type_1_methods", 0.85),
+        CloneType::Type1,
+        true,
+    );
+}
+
+#[test]
+fn production_and_test_forms_do_not_pair() {
+    let report = analyze_fixture("test_kind_no_pair", 0.85);
+    assert!(
+        report.findings.is_empty(),
+        "production/test should not pair: {:?}",
+        report.findings
+    );
+}

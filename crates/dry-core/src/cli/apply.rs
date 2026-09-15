@@ -4,14 +4,15 @@ use std::path::PathBuf;
 
 use crate::{Config, OutputFormat};
 
-use super::{CliError, RawFlags, help_text};
+use super::{CliError, CliOptions, RawFlags, help_text};
 
 pub(super) fn apply_arg(
     arg: &str,
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
+    options: &CliOptions,
 ) -> Result<(), CliError> {
-    if let Some(result) = try_flag_arg(arg, args, raw) {
+    if let Some(result) = try_flag_arg(arg, args, raw, options) {
         return result;
     }
     raw.paths.push(PathBuf::from(arg));
@@ -22,9 +23,10 @@ fn try_flag_arg(
     arg: &str,
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
+    options: &CliOptions,
 ) -> Option<Result<(), CliError>> {
     if arg == "--help" || arg == "-h" {
-        return Some(Err(CliError::help(help_text(raw.bin_name))));
+        return Some(Err(CliError::help(help_text(options))));
     }
     try_apply_valued(arg, args, raw)
         .or_else(|| try_apply_switch(arg, raw))
@@ -81,6 +83,7 @@ fn try_apply_mins(
     match arg {
         "--min-nodes" => Some(apply_min_nodes(args, raw)),
         "--min-lines" => Some(apply_min_lines(args, raw)),
+        "--max-file-bytes" => Some(apply_max_file_bytes(args, raw)),
         _ => None,
     }
 }
@@ -94,6 +97,7 @@ fn try_apply_walk_lists(
     match arg {
         "--extensions" => Some(apply_extensions(args, raw)),
         "--exclude" => Some(apply_exclude(args, raw)),
+        "--exclude-only" => Some(apply_exclude_only(args, raw)),
         _ => None,
     }
 }
@@ -177,6 +181,18 @@ fn apply_min_lines(
     Ok(())
 }
 
+fn apply_max_file_bytes(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    raw.max_file_bytes = Some(parse_value(
+        &require_value(args, "--max-file-bytes")?,
+        "integer",
+    )?);
+    Ok(())
+}
+
 fn apply_extensions(
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
@@ -192,6 +208,15 @@ fn apply_exclude(
 ) -> Result<(), CliError> {
     // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
     raw.exclude = Some(parse_csv_list(&require_value(args, "--exclude")?));
+    Ok(())
+}
+
+fn apply_exclude_only(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    raw.exclude_only = Some(parse_csv_list(&require_value(args, "--exclude-only")?));
     Ok(())
 }
 
@@ -232,11 +257,23 @@ fn overlay_walk_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(min_lines) = raw.min_lines {
         config.walk.min_lines = min_lines;
     }
+    if let Some(max_file_bytes) = raw.max_file_bytes {
+        config.walk.max_file_bytes = max_file_bytes;
+    }
     if let Some(extensions) = &raw.extensions {
         config.walk.extensions.clone_from(extensions);
     }
+    overlay_exclude_flags(raw, config);
+}
+
+fn overlay_exclude_flags(raw: &RawFlags, config: &mut Config) {
+    if let Some(exclude_only) = &raw.exclude_only {
+        config.walk.exclude.clone_from(exclude_only);
+        config.walk.exclude_replace = true;
+        return;
+    }
     if let Some(exclude) = &raw.exclude {
-        config.walk.exclude.clone_from(exclude);
+        config.walk.exclude = crate::merge_excludes(&config.walk.exclude, exclude);
     }
 }
 

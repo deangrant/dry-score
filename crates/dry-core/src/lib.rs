@@ -26,7 +26,10 @@ pub use cli::{CliArgs, CliError, CliOptions, help_text, parse_args};
 #[doc(inline)]
 pub use compare::compare;
 #[doc(inline)]
-pub use config::{Config, OutputFormat, discover_config, load_config, validate_threshold};
+pub use config::{
+    Config, OutputFormat, default_excludes, discover_config, load_config, merge_excludes,
+    resolve_walk_excludes, validate_threshold, validate_walk_numerics,
+};
 #[doc(inline)]
 pub use domain::{
     CloneType, Finding, FormKind, FormMember, FormSpan, NormalizedForm, ReportSummary, Tier,

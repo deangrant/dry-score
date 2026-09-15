@@ -28,6 +28,7 @@ fn receiver_type_name(node: Node<'_>, source: &[u8]) -> Option<String> {
 }
 
 fn first_receiver_type(params: Node<'_>, source: &[u8]) -> Option<String> {
+    // dry-rs:ignore. Tree-sitter child-walk helper; parallel shape is intentional.
     let mut cursor = params.walk();
     params.children(&mut cursor).find_map(|child| param_type_name(child, source))
 }

@@ -18,7 +18,6 @@ pub(super) fn collect_near_miss_edges(
 ) -> Vec<(usize, usize, f64)> {
     let df = fingerprint_df(remaining);
     let index = build_fingerprint_index(remaining, &df, threshold);
-    let claimed = BTreeSet::new();
     let mut edges = Vec::new();
     let mut seen_pairs = BTreeSet::new();
     for (left_idx, left) in remaining.iter().enumerate() {
@@ -30,7 +29,6 @@ pub(super) fn collect_near_miss_edges(
                     left_idx,
                     left,
                     right_idx,
-                    &claimed,
                     threshold,
                     &mut seen_pairs,
                 ) {
@@ -127,7 +125,6 @@ fn edge_score_if_new(
     left_idx: usize,
     left: &NormalizedForm,
     right_idx: usize,
-    claimed: &BTreeSet<u64>,
     threshold: f64,
     seen_pairs: &mut BTreeSet<(usize, usize)>,
 ) -> Option<f64> {
@@ -135,7 +132,7 @@ fn edge_score_if_new(
         return None;
     }
     let right = remaining[right_idx];
-    if !near_miss_eligible(left, right, claimed, threshold) {
+    if !near_miss_eligible(left, right, threshold) {
         return None;
     }
     if !seen_pairs.insert((left_idx, right_idx)) {
@@ -144,15 +141,8 @@ fn edge_score_if_new(
     partial_jaccard_score(jaccard(&left.fingerprints, &right.fingerprints), threshold)
 }
 
-fn near_miss_eligible(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-) -> bool {
-    !claimed.contains(&right.id)
-        && left.kind == right.kind
-        && within_jaccard_window(left.bag_size(), right.bag_size(), threshold)
+fn near_miss_eligible(left: &NormalizedForm, right: &NormalizedForm, threshold: f64) -> bool {
+    left.kind == right.kind && within_jaccard_window(left.bag_size(), right.bag_size(), threshold)
 }
 
 fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {
@@ -163,10 +153,9 @@ fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {
 pub(super) fn scored_near_miss(
     left: &NormalizedForm,
     right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
     threshold: f64,
 ) -> Option<f64> {
-    if !near_miss_eligible(left, right, claimed, threshold) {
+    if !near_miss_eligible(left, right, threshold) {
         return None;
     }
     partial_jaccard_score(jaccard(&left.fingerprints, &right.fingerprints), threshold)

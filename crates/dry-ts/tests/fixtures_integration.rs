@@ -90,6 +90,15 @@ fn nested_arrows_find_type_one() {
 }
 
 #[test]
+fn nested_named_find_type_one() {
+    assert_first_clone(
+        &analyze_fixture("nested_named", 0.85),
+        CloneType::Type1,
+        true,
+    );
+}
+
+#[test]
 fn type_1_methods_are_auto_refactor() {
     assert_first_clone(
         &analyze_fixture("type_1_methods", 0.85),

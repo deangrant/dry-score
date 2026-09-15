@@ -15,12 +15,15 @@ format = "text"
 # Extensions without a leading dot.
 extensions = ["rs"]
 # Directory name components to skip while walking (relative to each root).
-# Setting this key replaces the default list entirely (it does not merge).
-# Defaults are target, .git, and fixtures. Add "tests" here to skip test trees.
-exclude = ["target", ".git", "fixtures"]
+# Names here are merged with the built-in defaults (target, .git, fixtures,
+# node_modules, vendor, .venv, venv, dist, __pycache__). Set exclude_replace
+# to true to use only this list.
+exclude = ["tests"]
+# exclude_replace = false
 # Drop forms smaller than this structural node count.
 min_nodes = 10
 # Drop forms spanning fewer source lines than this.
 min_lines = 3
 # Skip source files larger than this many bytes (not read or normalized).
+# CLI: --max-file-bytes N (must be >= 1).
 max_file_bytes = 2097152

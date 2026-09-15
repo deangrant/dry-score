@@ -15,7 +15,7 @@ pub(super) fn emit_node(
         return NormNode::leaf("skip");
     }
     if is_nested_form_kind(node.kind()) {
-        // Nested arrows/functions are extracted as their own forms; stub here.
+        // Nested arrows and named functions are extracted as their own forms; stub here.
         return NormNode::leaf(node.kind());
     }
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
@@ -27,7 +27,11 @@ pub(super) fn emit_node(
 fn is_nested_form_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "arrow_function" | "function_expression" | "generator_function"
+        "arrow_function"
+            | "function_expression"
+            | "generator_function"
+            | "function_declaration"
+            | "generator_function_declaration"
     )
 }
 
@@ -108,10 +112,22 @@ fn try_emit_number_leaf(node: Node<'_>, source: &[u8]) -> Option<NormNode> {
 
 fn try_emit_text_leaf(node: Node<'_>) -> Option<NormNode> {
     match node.kind() {
-        "string" | "template_string" => Some(NormNode::leaf("lit_str")),
+        "string" | "string_fragment" => Some(NormNode::leaf("lit_str")),
+        "template_string" => emit_plain_template_leaf(node),
         "regex" => Some(NormNode::leaf("lit_regex")),
         _ => None,
     }
+}
+
+fn emit_plain_template_leaf(node: Node<'_>) -> Option<NormNode> {
+    (!has_template_substitution(node)).then(|| NormNode::leaf("lit_str"))
+}
+
+fn has_template_substitution(node: Node<'_>) -> bool {
+    // dry-rs:ignore. Tree-sitter child-walk helper; parallel shape is intentional.
+    let mut cursor = node.walk();
+    node.named_children(&mut cursor)
+        .any(|child| child.kind() == "template_substitution")
 }
 
 fn try_emit_keyword_leaf(node: Node<'_>) -> Option<NormNode> {
@@ -212,9 +228,21 @@ mod tests {
 "#;
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(Path::new("demo.ts"), src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut func = None;
+        let mut c = root.walk();
+        for child in root.children(&mut c) {
+            if child.kind() == "function_declaration" {
+                func = Some(child);
+            }
+        }
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let func = func.expect("func");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let body = func.child_by_field_name("body").expect("body");
         let mut placeholders = PlaceholderMap::default();
-        let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
-        assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
+        let _ = emit_node(body, src.as_bytes(), &mut placeholders);
+        assert!(placeholders.ident_trace.iter().any(|s| s == "x"));
     }
 
     #[test]
@@ -234,6 +262,45 @@ mod tests {
             assert_eq!(skipped.label, "skip");
         }
         assert_eq!(operator_text(root, src.as_bytes()), "_");
+    }
+
+    #[test]
+    fn interpolated_templates_preserve_substitution_structure() {
+        let plain = emit_function_body("function a() { return `hello`; }\n");
+        let interp_name = emit_function_body("function a() { return `hi ${user.name}`; }\n");
+        let interp_call = emit_function_body("function a() { return `hi ${other.fn()}`; }\n");
+        assert_ne!(plain, interp_name);
+        assert_ne!(plain, interp_call);
+        assert_ne!(interp_name, interp_call);
+        assert!(contains_label(&interp_name, "template_string"));
+        assert!(contains_label(&interp_name, "template_substitution"));
+        assert!(!contains_label(&plain, "template_substitution"));
+    }
+
+    fn emit_function_body(src: &str) -> NormNode {
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(Path::new("demo.ts"), src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut func = None;
+        let mut c = root.walk();
+        for child in root.children(&mut c) {
+            if child.kind() == "function_declaration" {
+                func = Some(child);
+            }
+        }
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let func = func.expect("func");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let body = func.child_by_field_name("body").expect("body");
+        let mut placeholders = PlaceholderMap::default();
+        emit_node(body, src.as_bytes(), &mut placeholders)
+    }
+
+    fn contains_label(node: &NormNode, label: &str) -> bool {
+        if node.label == label {
+            return true;
+        }
+        node.children.iter().any(|child| contains_label(child, label))
     }
 
     fn walk_find_comment<'a>(node: Node<'a>, found: &mut Option<Node<'a>>) {

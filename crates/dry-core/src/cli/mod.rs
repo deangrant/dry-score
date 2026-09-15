@@ -6,10 +6,13 @@ mod apply;
 mod tests;
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use crate::{Config, OutputFormat, discover_config, load_config, validate_threshold};
+use crate::{
+    Config, OutputFormat, discover_config, load_config, validate_threshold, validate_walk_numerics,
+};
 
 use apply::{apply_arg, overlay_cli_onto_config};
 
@@ -87,27 +90,25 @@ pub fn parse_args(
 ) -> Result<CliArgs, CliError> {
     let mut args = args.into_iter();
     let _exe = args.next();
-    let mut raw = RawFlags {
-        bin_name: options.bin_name,
-        ..RawFlags::default()
-    };
+    let mut raw = RawFlags::default();
     while let Some(arg) = args.next() {
-        apply_arg(&arg, &mut args, &mut raw)?;
+        apply_arg(&arg, &mut args, &mut raw, options)?;
     }
     finish_args(raw, options)
 }
 
 #[derive(Debug, Default)]
 struct RawFlags {
-    bin_name: &'static str,
     paths: Vec<PathBuf>,
     config_path: Option<PathBuf>,
     threshold: Option<f64>,
     format: Option<OutputFormat>,
     min_nodes: Option<u32>,
     min_lines: Option<u32>,
+    max_file_bytes: Option<u64>,
     extensions: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+    exclude_only: Option<Vec<String>>,
     fail_on: Option<bool>,
     json_out: Option<PathBuf>,
 }
@@ -116,12 +117,11 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
     if raw.paths.is_empty() {
         raw.paths.push(PathBuf::from("."));
     }
-    let mut config = load_effective_config(raw.config_path.as_deref())?;
+    let mut config = load_effective_config(raw.config_path.as_deref(), &raw.paths[0])?;
     overlay_cli_onto_config(&raw, &mut config);
-    if let Some(extensions) = &options.force_extensions {
-        config.walk.extensions.clone_from(extensions);
-    }
-    validate_threshold(config.gate.threshold).map_err(|err| CliError::usage(err.to_string()))?;
+    reject_cli_extensions_when_forced(&raw, options)?;
+    apply_forced_extensions(options, &mut config);
+    validate_cli_config(&config)?;
     Ok(CliArgs {
         paths: raw.paths,
         config,
@@ -130,7 +130,29 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
     })
 }
 
-fn load_effective_config(explicit: Option<&Path>) -> Result<Config, CliError> {
+fn reject_cli_extensions_when_forced(raw: &RawFlags, options: &CliOptions) -> Result<(), CliError> {
+    if options.force_extensions.is_none() || raw.extensions.is_none() {
+        return Ok(());
+    }
+    let fixed = options.force_extensions.as_ref().map_or(String::new(), |exts| exts.join(", "));
+    Err(CliError::usage(format!(
+        "--extensions is not supported for {}; extensions are fixed to [{fixed}]",
+        options.bin_name
+    )))
+}
+
+fn apply_forced_extensions(options: &CliOptions, config: &mut Config) {
+    if let Some(extensions) = &options.force_extensions {
+        config.walk.extensions.clone_from(extensions);
+    }
+}
+
+fn validate_cli_config(config: &Config) -> Result<(), CliError> {
+    validate_threshold(config.gate.threshold).map_err(|err| CliError::usage(err.to_string()))?;
+    validate_walk_numerics(&config.walk).map_err(|err| CliError::usage(err.to_string()))
+}
+
+fn load_effective_config(explicit: Option<&Path>, first_root: &Path) -> Result<Config, CliError> {
     if let Some(path) = explicit {
         return load_config(path).map_err(|err| CliError::usage(err.to_string()));
     }
@@ -138,12 +160,52 @@ fn load_effective_config(explicit: Option<&Path>) -> Result<Config, CliError> {
     if let Some(found) = discover_config(&cwd) {
         return load_config(&found).map_err(|err| CliError::usage(err.to_string()));
     }
+    if let Some(root) = analysis_root_for_discovery(&cwd, first_root)
+        && let Some(found) = discover_config(&root)
+    {
+        return load_config(&found).map_err(|err| CliError::usage(err.to_string()));
+    }
     Ok(Config::default())
 }
 
-/// Builds the `--help` text for `bin`.
+fn analysis_root_for_discovery(cwd: &Path, first_root: &Path) -> Option<PathBuf> {
+    if first_root.as_os_str() == "." {
+        return None;
+    }
+    let root = if first_root.is_absolute() {
+        first_root.to_path_buf()
+    } else {
+        cwd.join(first_root)
+    };
+    if paths_equivalent(cwd, &root) {
+        None
+    } else {
+        Some(root)
+    }
+}
+
+fn paths_equivalent(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
+}
+
+/// Builds the `--help` text for the given CLI options.
 #[must_use]
-pub fn help_text(bin: &str) -> String {
+pub fn help_text(options: &CliOptions) -> String {
+    let extensions_line = options.force_extensions.as_ref().map_or_else(
+        || "         --extensions EXT[,EXT]...\n".to_owned(),
+        |exts| {
+            format!(
+                "         (extensions fixed to {}; --extensions unsupported)\n",
+                exts.join(", ")
+            )
+        },
+    );
     format!(
         "{bin} [PATH]... [options]\n\n\
          --config PATH\n\
@@ -151,11 +213,14 @@ pub fn help_text(bin: &str) -> String {
          --format text|json|both\n\
          --min-nodes N\n\
          --min-lines N\n\
-         --extensions EXT[,EXT]...\n\
-         --exclude NAME[,NAME]...\n\
+         --max-file-bytes N\n\
+         {extensions_line}\
+         --exclude NAME[,NAME]...   (merge with defaults)\n\
+         --exclude-only NAME[,NAME]...   (replace defaults)\n\
          --fail-on-findings\n\
          --no-fail-on-findings\n\
          --json-out PATH   (required with --format both; overwrites PATH)\n\
-         --help\n"
+         --help\n",
+        bin = options.bin_name,
     )
 }

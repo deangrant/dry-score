@@ -6,8 +6,8 @@ fingerprint bags, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
-The shipped CLIs are **`dry-rs`** (Rust), **`dry-go`** (Go), and **`dry-ts`**
-(TypeScript).
+The shipped CLIs are **`dry-rs`** (Rust), **`dry-go`** (Go), **`dry-ts`**
+(TypeScript), and **`dry-py`** (Python).
 
 ## Requirements
 
@@ -52,20 +52,23 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--config PATH` | Load knobs from a TOML file |
 | `--threshold FLOAT` | Minimum Jaccard score to report (default `0.85`; must be in `[0.0, 1.0]`) |
 | `--format text\|json\|both` | Human summary, JSON envelope, or both (default `text`) |
-| `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
-| `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
-| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots) |
-| `--exclude NAME[,NAME]...` | Replace `walk.exclude` (comma-separated directory names) |
+| `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`; must be `>= 1`) |
+| `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`; must be `>= 1`) |
+| `--max-file-bytes N` | Skip source files larger than N bytes (default `2097152`; must be `>= 1`) |
+| `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots; unsupported on language-forced adapters) |
+| `--exclude NAME[,NAME]...` | Merge names into `walk.exclude` (keeps built-in defaults) |
+| `--exclude-only NAME[,NAME]...` | Replace `walk.exclude` entirely (drops built-in defaults) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
 | `--json-out PATH` | Required when format is `both`: write JSON here (overwrites if present) |
 | `--help`, `-h` | Print help and exit `0` |
 
-Walk-up discovery loads `dry.toml` from the current directory or a parent unless
-you pass `--config`. Analysis roots are trusted local trees; the walker does
-**not** follow symlinks, and a symlink root is an error. Concurrent path
-replacement during a scan is outside the trust model. `--json-out` may target
-any writable path and overwrites existing files.
+Walk-up discovery loads `dry.toml` from the current directory or a parent,
+then from the first analysis path if still missing, unless you pass `--config`.
+Analysis roots are trusted local trees; the walker does **not** follow
+symlinks, and a symlink root is an error. Concurrent path replacement during a
+scan is outside the trust model. `--json-out` may target any writable path and
+overwrites existing files.
 
 ## Configuration
 
@@ -78,13 +81,17 @@ Defaults match the table below.
 | `[gate]` | `fail_on_findings` | `false` |
 | `[output]` | `format` | `"text"` |
 | `[walk]` | `extensions` | `["rs"]` |
-| `[walk]` | `exclude` | `["target", ".git", "fixtures"]` |
+| `[walk]` | `exclude` | `["target", ".git", "fixtures", "node_modules", "vendor", ".venv", "venv", "dist", "__pycache__"]` |
+| `[walk]` | `exclude_replace` | `false` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
 | `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
-Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults. Add `"tests"` to skip integration-test trees if desired.
+Setting `walk.exclude` in TOML **merges** with the built-in defaults (deduped).
+Defaults skip common dependency and build dirs across Rust, Node, Go, and
+Python. Add `"tests"` to skip integration-test trees. Set
+`walk.exclude_replace = true` (or pass `--exclude-only`) to use only the listed
+names.
 
 ## How detection works
 
@@ -109,14 +116,18 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 
 ### Match
 
-1. Identical fingerprint bags score `1.0` (exact buckets).
+1. Identical fingerprint bags score `1.0` (exact buckets). Identifier traces
+   label Type-1 (same ids) or Type-2 (renamed). When a bag mixes identical-ident
+   twins with renamed leftovers, a form may appear in both a Type-1 and a Type-2
+   finding; summary counters count findings, not unique forms.
 2. Remaining forms use an inverted fingerprint index and connected-component
    near-miss multiset Jaccard (window on total bag size; DF-ordered occurrence
    prefix for candidates; score is the minimum pairwise Jaccard among members;
    non-threshold-closed components split into exclusive pairs).
 3. Production and test forms (`FormKind`) never pair. Kind is
    language-idiomatic: Rust attrs/`cfg(test)`, Go `*_test.go` only, TypeScript
-   `.test.` / `.spec.` / `__tests__`. Importable harness packages outside those
+   `.test.` / `.spec.` / `__tests__`, Python `test_*.py` / `*_test.py` /
+   `tests` / `test` path components. Importable harness packages outside those
    conventions stay `Production` so prod clones remain visible.
 4. Findings sort most exact → least exact.
 
@@ -145,7 +156,7 @@ Use a **full-line** comment directive (optional leading whitespace): `//`,
 substrings do not count.
 
 - Span: `// dry-rs:ignore` or `// dry-rs:ignore. reason`
-- File: `// dry-rs:ignore-file` near the top of the file
+- File: `// dry-rs:ignore-file` within the first 40 lines of the file
 - Doc/block forms (`///`, `//!`, `/* … */`) are also recognized
 
 ## Exit codes
@@ -167,6 +178,9 @@ Intentional corpora live under
 | `type_2_renamed` | Same structure, renamed locals/params |
 | `type_3_near_miss` | Shared structure with a small edit |
 | `non_clone` | Similar names, different control flow (no findings) |
+| `nested_closures` | Twin nested closures (Type-1) |
+| `type_1_methods` | Twin `impl` methods (Type-1) |
+| `test_kind_no_pair` | Production vs `#[test]` forms never pair |
 
 ## CI and local verify
 
@@ -181,7 +195,7 @@ Local parity:
 
 ```bash
 ./scripts/verify.sh lite   # fmt, clippy, test
-./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go + dry-ts dogfood findings=0
+./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go + dry-ts + dry-py dogfood findings=0
 ```
 
 Contributor conventions: [AGENTS.md](AGENTS.md).
@@ -194,6 +208,7 @@ Contributor conventions: [AGENTS.md](AGENTS.md).
 | [`crates/dry-rs`](crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
 | [`crates/dry-go`](crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 | [`crates/dry-ts`](crates/dry-ts) | TypeScript Tree-sitter adapter and the `dry-ts` binary |
+| [`crates/dry-py`](crates/dry-py) | Python Tree-sitter adapter and the `dry-py` binary |
 
 Language adapters implement `LanguageNormalizer` and reuse `dry-core`
 comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
@@ -206,13 +221,14 @@ cargo build --release -p dry-go
 ./target/release/dry-go path/to/module
 ```
 
-`dry-go` forces `walk.extensions` to `["go"]`. Suppress with full-line
-`// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
-grammar at build time); syntax errors discard the file’s forms and surface as
-analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
-dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/) (tiny unique
-non-clone smoke tree; clone types are covered by fixtures, not dogfood breadth).
-The adapter itself is Rust.
+`dry-go` forces `walk.extensions` to `["go"]` (CLI `--extensions` is rejected).
+Suppress with full-line `// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses
+Tree-sitter (C grammar at build time); syntax errors discard the file’s forms
+and surface as analyze warnings (same fail-closed contract as `dry-rs`). Full
+verify and CI dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/)
+(tiny unique non-clone smoke tree plus exclude decoys under `vendor/`; clone
+types are covered by fixtures, not dogfood breadth). The adapter itself is
+Rust.
 
 ### TypeScript (`dry-ts`)
 
@@ -222,13 +238,30 @@ cargo build --release -p dry-ts
 ```
 
 `dry-ts` forces `walk.extensions` to `["ts", "tsx", "mts", "cts"]` (not `.js` /
-`.jsx`). Declaration files (`*.d.ts` / `*.d.mts` / `*.d.cts`) are skipped.
-Suppress with full-line `// dry-ts:ignore` / `// dry-ts:ignore-file`. Parsing
-uses Tree-sitter TypeScript / TSX grammars; syntax errors discard the file’s
-forms and surface as analyze warnings (same fail-closed contract as `dry-rs`).
-Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/)
-(tiny unique non-clone smoke tree; clone types are covered by fixtures, not
-dogfood breadth). The adapter itself is Rust.
+`.jsx`; CLI `--extensions` is rejected). Declaration files (`*.d.ts` / `*.d.mts` /
+`*.d.cts`) are skipped. Suppress with full-line `// dry-ts:ignore` /
+`// dry-ts:ignore-file`. Parsing uses Tree-sitter TypeScript / TSX grammars;
+syntax errors discard the file’s forms and surface as analyze warnings (same
+fail-closed contract as `dry-rs`). Full verify and CI dogfood scan
+[`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/) (tiny unique non-clone smoke
+tree plus exclude decoys under `node_modules/`; clone types are covered by
+fixtures, not dogfood breadth). The adapter itself is Rust.
+
+### Python (`dry-py`)
+
+```bash
+cargo build --release -p dry-py
+./target/release/dry-py path/to/package
+```
+
+`dry-py` forces `walk.extensions` to `["py"]` (CLI `--extensions` is rejected).
+Stub files (`*.pyi`) are skipped. Suppress with full-line `# dry-py:ignore` /
+`# dry-py:ignore-file`. Parsing uses Tree-sitter Python; syntax errors discard
+the file’s forms and surface as analyze warnings (same fail-closed contract as
+`dry-rs`). Full verify and CI dogfood scan
+[`crates/dry-py/dogfood/`](crates/dry-py/dogfood/) (tiny unique non-clone smoke
+tree plus exclude decoys under `.venv/`; clone types are covered by fixtures,
+not dogfood breadth). The adapter itself is Rust.
 
 ## License
 

@@ -23,13 +23,11 @@ pub fn classify(score: f64, idents_identical: bool) -> CloneType {
 
 /// Maps similarity to an agentic routing tier.
 ///
-/// Bands: auto ≥ 0.95, review ≥ 0.85, advisory ≥ `threshold` (and &lt; 0.85).
-/// When `threshold ≥ 0.85`, the advisory band is empty for emitted findings.
+/// Bands: auto ≥ 0.95, review ≥ 0.85, else advisory. The advisory band for
+/// emitted findings is further gated by the compare threshold at emission time
+/// (empty when that threshold ≥ 0.85).
 #[must_use]
-pub fn tier_for(score: f64, threshold: f64) -> Tier {
-    // `threshold` documents the advisory band; below-review scores (including
-    // defensive below-threshold calls) all route to Advisory.
-    let _ = threshold;
+pub fn tier_for(score: f64) -> Tier {
     if score >= AUTO_REFACTOR_FLOOR {
         Tier::AutoRefactor
     } else if score >= REVIEW_FIRST_FLOOR {
@@ -57,10 +55,9 @@ mod tests {
 
     #[test]
     fn tier_floors() {
-        assert_eq!(tier_for(0.99, 0.8), Tier::AutoRefactor);
-        assert_eq!(tier_for(0.9, 0.8), Tier::ReviewFirst);
-        assert_eq!(tier_for(0.82, 0.8), Tier::Advisory);
-        assert_eq!(tier_for(0.82, 0.85), Tier::Advisory);
-        assert_eq!(tier_for(0.5, 0.85), Tier::Advisory);
+        assert_eq!(tier_for(0.99), Tier::AutoRefactor);
+        assert_eq!(tier_for(0.9), Tier::ReviewFirst);
+        assert_eq!(tier_for(0.82), Tier::Advisory);
+        assert_eq!(tier_for(0.5), Tier::Advisory);
     }
 }

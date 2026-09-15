@@ -57,7 +57,7 @@ pub enum Tier {
     AutoRefactor,
     /// Score ≥ 0.85; propose refactor, review before merge.
     ReviewFirst,
-    /// Score ≥ threshold and &lt; 0.85 (empty when threshold ≥ 0.85).
+    /// Score &lt; 0.85 (only emitted when the compare threshold is below 0.85).
     Advisory,
 }
 

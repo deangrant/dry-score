@@ -39,6 +39,8 @@ fn parse_switches() {
         "12",
         "--min-lines",
         "5",
+        "--max-file-bytes",
+        "4096",
         "--json-out",
         "out.json",
     ]);
@@ -48,6 +50,7 @@ fn parse_switches() {
     assert!(!parsed.config.gate.fail_on_findings);
     assert_eq!(parsed.config.walk.min_nodes, 12);
     assert_eq!(parsed.config.walk.min_lines, 5);
+    assert_eq!(parsed.config.walk.max_file_bytes, 4096);
     assert_eq!(parsed.json_out.as_deref(), Some(Path::new("out.json")));
 }
 
@@ -62,9 +65,23 @@ fn parse_errors() {
 }
 
 #[test]
+fn max_file_bytes_flag_errors() {
+    assert!(parse(&["--max-file-bytes"]).is_err());
+    assert!(parse(&["--max-file-bytes", "x"]).is_err());
+}
+
+#[test]
+fn walk_numeric_zero_rejected() {
+    assert!(parse(&["--min-nodes", "0"]).is_err());
+    assert!(parse(&["--min-lines", "0"]).is_err());
+    assert!(parse(&["--max-file-bytes", "0"]).is_err());
+}
+
+#[test]
 fn walk_flag_value_required() {
     assert!(parse(&["--extensions"]).is_err());
     assert!(parse(&["--exclude"]).is_err());
+    assert!(parse(&["--exclude-only"]).is_err());
 }
 
 #[test]
@@ -76,8 +93,33 @@ fn help_exits_success_via_stdout() {
         let err = err.expect_err("help");
         assert!(err.print_stdout);
         assert!(err.message.contains("--threshold"));
+        assert!(err.message.contains("--exclude-only"));
         assert!(err.message.starts_with("dry-core-test [PATH]..."));
     }
+}
+
+#[test]
+fn help_lists_max_file_bytes_and_extensions() {
+    let text = help_text(&opts());
+    assert!(text.contains("--max-file-bytes N"));
+    assert!(text.contains("--extensions EXT"));
+}
+
+#[test]
+fn help_notes_fixed_extensions_when_forced() {
+    let err = parse_args(
+        args(&["--help"]),
+        &CliOptions {
+            bin_name: "dry-go",
+            force_extensions: Some(vec!["go".to_owned()]),
+        },
+    );
+    assert!(err.is_err());
+    #[expect(clippy::expect_used, reason = "test")]
+    let err = err.expect_err("help");
+    assert!(err.message.contains("extensions fixed to go"));
+    assert!(err.message.contains("--extensions unsupported"));
+    assert!(!err.message.contains("--extensions EXT"));
 }
 
 #[test]
@@ -96,12 +138,12 @@ fn default_path_is_dot() {
     let parsed = parsed.expect("ok");
     assert_eq!(parsed.paths, vec![PathBuf::from(".")]);
     assert!(!CliError::usage("x").to_string().is_empty());
-    assert!(!help_text("dry-core-test").is_empty());
+    assert!(!help_text(&opts()).is_empty());
 }
 
 #[test]
-fn parse_extensions_and_exclude_replace_lists() {
-    let parsed = parse(&["--extensions", "rs, go", "--exclude", "target,vendor"]);
+fn parse_extensions_and_exclude_merge_with_defaults() {
+    let parsed = parse(&["--extensions", "rs, go", "--exclude", "tests"]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
@@ -109,14 +151,26 @@ fn parse_extensions_and_exclude_replace_lists() {
         parsed.config.walk.extensions,
         vec!["rs".to_owned(), "go".to_owned()]
     );
+    assert!(parsed.config.walk.exclude.iter().any(|n| n == "tests"));
+    assert!(parsed.config.walk.exclude.iter().any(|n| n == ".git"));
+    assert!(parsed.config.walk.exclude.iter().any(|n| n == "node_modules"));
+}
+
+#[test]
+fn parse_exclude_only_replaces_defaults() {
+    let parsed = parse(&["--exclude-only", "target,vendor"]);
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let parsed = parsed.expect("ok");
     assert_eq!(
         parsed.config.walk.exclude,
         vec!["target".to_owned(), "vendor".to_owned()]
     );
+    assert!(parsed.config.walk.exclude_replace);
 }
 
 #[test]
-fn force_extensions_overrides_cli_extensions() {
+fn force_extensions_rejects_cli_extensions() {
     let parsed = parse_args(
         args(&["--extensions", "rs"]),
         &CliOptions {
@@ -124,10 +178,11 @@ fn force_extensions_overrides_cli_extensions() {
             force_extensions: Some(vec!["go".to_owned()]),
         },
     );
-    assert!(parsed.is_ok());
+    assert!(parsed.is_err());
     #[expect(clippy::expect_used, reason = "test")]
-    let parsed = parsed.expect("ok");
-    assert_eq!(parsed.config.walk.extensions, vec!["go".to_owned()]);
+    let err = parsed.expect_err("usage");
+    assert!(err.message.contains("--extensions is not supported"));
+    assert!(err.message.contains("dry-go"));
 }
 
 #[test]
@@ -148,7 +203,7 @@ fn force_extensions_overrides_config() {
 #[test]
 #[expect(
     clippy::cognitive_complexity,
-    reason = "config discovery matrix spans explicit/cwd/default paths"
+    reason = "config discovery matrix spans explicit/cwd/root/default paths"
 )]
 fn explicit_config_path() {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
@@ -163,19 +218,66 @@ fn explicit_config_path() {
     let parsed = parsed.expect("ok");
     assert!((parsed.config.gate.threshold - 0.77).abs() < f64::EPSILON);
     assert!(parse(&["--config", "/no/such.toml"]).is_err());
-    let discovered = load_effective_config(None);
+    let discovered = load_effective_config(None, Path::new("."));
     assert!(discovered.is_ok());
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let bare = std::env::temp_dir().join(format!("dry-core-cli-bare-{stamp}"));
     assert!(fs::create_dir_all(&bare).is_ok());
     let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     assert!(env::set_current_dir(&bare).is_ok());
-    let defaulted = load_effective_config(None);
-    assert!(env::set_current_dir(previous).is_ok());
+    let defaulted = load_effective_config(None, Path::new("."));
+    assert!(env::set_current_dir(&previous).is_ok());
     assert!(defaulted.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let defaulted = defaulted.expect("ok");
     assert!((defaulted.gate.threshold - Config::default().gate.threshold).abs() < f64::EPSILON);
     let _ = fs::remove_dir_all(bare);
     let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn discovers_config_from_analysis_root_when_cwd_has_none() {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let bare = std::env::temp_dir().join(format!("dry-core-cli-cwd-{stamp}"));
+    let root = std::env::temp_dir().join(format!("dry-core-cli-root-{stamp}"));
+    assert!(fs::create_dir_all(&bare).is_ok());
+    assert!(fs::create_dir_all(&root).is_ok());
+    assert!(fs::write(root.join("dry.toml"), "[gate]\nthreshold = 0.71\n").is_ok());
+    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    assert!(env::set_current_dir(&bare).is_ok());
+    let root_s = root.to_string_lossy().into_owned();
+    let parsed = parse(&[&root_s]);
+    assert!(env::set_current_dir(previous).is_ok());
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    let parsed = parsed.expect("ok");
+    assert!((parsed.config.gate.threshold - 0.71).abs() < f64::EPSILON);
+    let _ = fs::remove_dir_all(bare);
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn cwd_dry_toml_wins_over_analysis_root_config() {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let cwd = std::env::temp_dir().join(format!("dry-core-cli-cwd-win-{stamp}"));
+    let root = std::env::temp_dir().join(format!("dry-core-cli-root-lose-{stamp}"));
+    assert!(fs::create_dir_all(&cwd).is_ok());
+    assert!(fs::create_dir_all(&root).is_ok());
+    assert!(fs::write(cwd.join("dry.toml"), "[gate]\nthreshold = 0.99\n").is_ok());
+    assert!(fs::write(root.join("dry.toml"), "[gate]\nthreshold = 0.50\n").is_ok());
+    let threshold = parse_threshold_under_cwd(&cwd, &root);
+    assert!((threshold - 0.99).abs() < f64::EPSILON);
+    let _ = fs::remove_dir_all(cwd);
+    let _ = fs::remove_dir_all(root);
+}
+
+fn parse_threshold_under_cwd(cwd: &Path, root: &Path) -> f64 {
+    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    assert!(env::set_current_dir(cwd).is_ok());
+    let root_s = root.to_string_lossy().into_owned();
+    let parsed = parse(&[&root_s]);
+    assert!(env::set_current_dir(previous).is_ok());
+    assert!(parsed.is_ok());
+    #[expect(clippy::expect_used, reason = "test")]
+    parsed.expect("ok").config.gate.threshold
 }
