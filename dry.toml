@@ -9,17 +9,7 @@ format = "text"
 
 [walk]
 extensions = ["rs"]
-exclude = [
-  "target",
-  ".git",
-  "fixtures",
-  "tests",
-  "node_modules",
-  "vendor",
-  ".venv",
-  "venv",
-  "dist",
-  "__pycache__",
-]
+# Merged with built-in defaults (target, .git, node_modules, …).
+exclude = ["tests"]
 min_nodes = 10
 min_lines = 3

@@ -70,13 +70,16 @@ discover files → parse/normalize → fingerprint index → match → report
 
 ## Config / walk
 
-- Walk-up discovery loads [`dry.toml`](../../../dry.toml); schema in
+- Walk-up discovery loads [`dry.toml`](../../../dry.toml) from CWD (then the
+  first analysis path if needed); schema in
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
-  `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
+  `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`,
+  `walk.exclude_replace`, `output.format`.
 - Default `walk.exclude` is `target`, `.git`, `fixtures`, `node_modules`,
-  `vendor`, `.venv`, `venv`, `dist`, `__pycache__` (replacement list, not
-  merge). Add `tests` explicitly to skip test trees.
+  `vendor`, `.venv`, `venv`, `dist`, `__pycache__`. User `exclude` / `--exclude`
+  **merges** with defaults unless `exclude_replace` / `--exclude-only`. Add
+  `tests` to skip test trees.
 - Walker does **not** follow symlinks; a symlink analysis root errors.
 - Go / TypeScript / Python parse fails closed on `has_error` (no forms; analyze
   records a warning), matching Rust `syn` parse failure.

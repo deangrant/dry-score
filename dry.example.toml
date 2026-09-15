@@ -15,20 +15,11 @@ format = "text"
 # Extensions without a leading dot.
 extensions = ["rs"]
 # Directory name components to skip while walking (relative to each root).
-# Setting this key replaces the default list entirely (it does not merge).
-# Defaults cover Rust/Node/Go/Python dep and build dirs. Add "tests" to skip
-# test trees.
-exclude = [
-  "target",
-  ".git",
-  "fixtures",
-  "node_modules",
-  "vendor",
-  ".venv",
-  "venv",
-  "dist",
-  "__pycache__",
-]
+# Names here are merged with the built-in defaults (target, .git, fixtures,
+# node_modules, vendor, .venv, venv, dist, __pycache__). Set exclude_replace
+# to true to use only this list.
+exclude = ["tests"]
+# exclude_replace = false
 # Drop forms smaller than this structural node count.
 min_nodes = 10
 # Drop forms spanning fewer source lines than this.

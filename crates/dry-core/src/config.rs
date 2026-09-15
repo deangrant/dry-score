@@ -81,8 +81,15 @@ pub struct WalkConfig {
     #[serde(default = "default_extensions")]
     pub extensions: Vec<String>,
     /// Path component names that cause a file or directory to be skipped.
+    ///
+    /// Unless [`Self::exclude_replace`] is true, user-supplied names are merged
+    /// with [`default_excludes`].
     #[serde(default = "default_excludes")]
     pub exclude: Vec<String>,
+    /// When true, [`Self::exclude`] replaces the built-in defaults instead of
+    /// merging with them.
+    #[serde(default)]
+    pub exclude_replace: bool,
     /// Minimum structural nodes for a form.
     #[serde(default = "default_min_nodes")]
     pub min_nodes: u32,
@@ -99,6 +106,7 @@ impl Default for WalkConfig {
         Self {
             extensions: default_extensions(),
             exclude: default_excludes(),
+            exclude_replace: false,
             min_nodes: default_min_nodes(),
             min_lines: default_min_lines(),
             max_file_bytes: default_max_file_bytes(),
@@ -110,7 +118,9 @@ fn default_extensions() -> Vec<String> {
     vec!["rs".to_owned()]
 }
 
-fn default_excludes() -> Vec<String> {
+/// Built-in directory names skipped during walks when excludes merge with defaults.
+#[must_use]
+pub fn default_excludes() -> Vec<String> {
     vec![
         "target".to_owned(),
         ".git".to_owned(),
@@ -122,6 +132,25 @@ fn default_excludes() -> Vec<String> {
         "dist".to_owned(),
         "__pycache__".to_owned(),
     ]
+}
+
+/// Merges `extra` into `base`, preserving order and dropping duplicate names.
+#[must_use]
+pub fn merge_excludes(base: &[String], extra: &[String]) -> Vec<String> {
+    let mut out = base.to_vec();
+    for name in extra {
+        if !out.iter().any(|existing| existing == name) {
+            out.push(name.clone());
+        }
+    }
+    out
+}
+
+/// Applies default-exclude merge unless [`WalkConfig::exclude_replace`] is set.
+pub fn resolve_walk_excludes(walk: &mut WalkConfig) {
+    if !walk.exclude_replace {
+        walk.exclude = merge_excludes(&default_excludes(), &walk.exclude);
+    }
 }
 
 const fn default_min_nodes() -> u32 {
@@ -207,6 +236,8 @@ pub fn load_config(path: &Path) -> Result<Config, ConfigError> {
     let config: Config = toml::from_str(&raw)
         .map_err(|err| ConfigError::new(format!("failed to parse {}: {err}", path.display())))?;
     validate_threshold(config.gate.threshold)?;
+    let mut config = config;
+    resolve_walk_excludes(&mut config.walk);
     Ok(config)
 }
 
@@ -354,6 +385,40 @@ mod tests {
         #[expect(clippy::expect_used, reason = "test asserts error path")]
         let err = err.expect_err("symlink");
         assert!(err.to_string().contains("symlinks"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_config_merges_exclude_with_defaults() {
+        let dir = temp_dir("cfg-exclude-merge");
+        let path = dir.join("dry.toml");
+        assert!(fs::write(&path, "[walk]\nexclude = [\"tests\"]\n").is_ok());
+        let cfg = load_config(&path);
+        assert!(cfg.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts load succeeded")]
+        let cfg = cfg.expect("ok");
+        assert!(cfg.walk.exclude.iter().any(|n| n == "tests"));
+        assert!(cfg.walk.exclude.iter().any(|n| n == ".git"));
+        assert!(cfg.walk.exclude.iter().any(|n| n == "node_modules"));
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn load_config_exclude_replace_skips_merge() {
+        let dir = temp_dir("cfg-exclude-replace");
+        let path = dir.join("dry.toml");
+        assert!(
+            fs::write(
+                &path,
+                "[walk]\nexclude_replace = true\nexclude = [\"tests\"]\n"
+            )
+            .is_ok()
+        );
+        let cfg = load_config(&path);
+        assert!(cfg.is_ok());
+        #[expect(clippy::expect_used, reason = "test asserts load succeeded")]
+        let cfg = cfg.expect("ok");
+        assert_eq!(cfg.walk.exclude, vec!["tests".to_owned()]);
         let _ = fs::remove_dir_all(dir);
     }
 

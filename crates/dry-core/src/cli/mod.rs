@@ -6,6 +6,7 @@ mod apply;
 mod tests;
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -108,6 +109,7 @@ struct RawFlags {
     min_lines: Option<u32>,
     extensions: Option<Vec<String>>,
     exclude: Option<Vec<String>>,
+    exclude_only: Option<Vec<String>>,
     fail_on: Option<bool>,
     json_out: Option<PathBuf>,
 }
@@ -116,7 +118,7 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
     if raw.paths.is_empty() {
         raw.paths.push(PathBuf::from("."));
     }
-    let mut config = load_effective_config(raw.config_path.as_deref())?;
+    let mut config = load_effective_config(raw.config_path.as_deref(), &raw.paths[0])?;
     overlay_cli_onto_config(&raw, &mut config);
     if let Some(extensions) = &options.force_extensions {
         config.walk.extensions.clone_from(extensions);
@@ -130,7 +132,7 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
     })
 }
 
-fn load_effective_config(explicit: Option<&Path>) -> Result<Config, CliError> {
+fn load_effective_config(explicit: Option<&Path>, first_root: &Path) -> Result<Config, CliError> {
     if let Some(path) = explicit {
         return load_config(path).map_err(|err| CliError::usage(err.to_string()));
     }
@@ -138,7 +140,38 @@ fn load_effective_config(explicit: Option<&Path>) -> Result<Config, CliError> {
     if let Some(found) = discover_config(&cwd) {
         return load_config(&found).map_err(|err| CliError::usage(err.to_string()));
     }
+    if let Some(root) = analysis_root_for_discovery(&cwd, first_root)
+        && let Some(found) = discover_config(&root)
+    {
+        return load_config(&found).map_err(|err| CliError::usage(err.to_string()));
+    }
     Ok(Config::default())
+}
+
+fn analysis_root_for_discovery(cwd: &Path, first_root: &Path) -> Option<PathBuf> {
+    if first_root.as_os_str() == "." {
+        return None;
+    }
+    let root = if first_root.is_absolute() {
+        first_root.to_path_buf()
+    } else {
+        cwd.join(first_root)
+    };
+    if paths_equivalent(cwd, &root) {
+        None
+    } else {
+        Some(root)
+    }
+}
+
+fn paths_equivalent(left: &Path, right: &Path) -> bool {
+    if left == right {
+        return true;
+    }
+    match (fs::canonicalize(left), fs::canonicalize(right)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    }
 }
 
 /// Builds the `--help` text for `bin`.
@@ -152,7 +185,8 @@ pub fn help_text(bin: &str) -> String {
          --min-nodes N\n\
          --min-lines N\n\
          --extensions EXT[,EXT]...\n\
-         --exclude NAME[,NAME]...\n\
+         --exclude NAME[,NAME]...   (merge with defaults)\n\
+         --exclude-only NAME[,NAME]...   (replace defaults)\n\
          --fail-on-findings\n\
          --no-fail-on-findings\n\
          --json-out PATH   (required with --format both; overwrites PATH)\n\

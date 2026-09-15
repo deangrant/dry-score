@@ -55,17 +55,19 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--min-nodes N` | Drop forms smaller than N structural nodes (default `10`) |
 | `--min-lines N` | Drop forms spanning fewer than N source lines (default `3`) |
 | `--extensions EXT[,EXT]...` | Replace `walk.extensions` (comma-separated, no dots) |
-| `--exclude NAME[,NAME]...` | Replace `walk.exclude` (comma-separated directory names) |
+| `--exclude NAME[,NAME]...` | Merge names into `walk.exclude` (keeps built-in defaults) |
+| `--exclude-only NAME[,NAME]...` | Replace `walk.exclude` entirely (drops built-in defaults) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
 | `--json-out PATH` | Required when format is `both`: write JSON here (overwrites if present) |
 | `--help`, `-h` | Print help and exit `0` |
 
-Walk-up discovery loads `dry.toml` from the current directory or a parent unless
-you pass `--config`. Analysis roots are trusted local trees; the walker does
-**not** follow symlinks, and a symlink root is an error. Concurrent path
-replacement during a scan is outside the trust model. `--json-out` may target
-any writable path and overwrites existing files.
+Walk-up discovery loads `dry.toml` from the current directory or a parent,
+then from the first analysis path if still missing, unless you pass `--config`.
+Analysis roots are trusted local trees; the walker does **not** follow
+symlinks, and a symlink root is an error. Concurrent path replacement during a
+scan is outside the trust model. `--json-out` may target any writable path and
+overwrites existing files.
 
 ## Configuration
 
@@ -79,13 +81,16 @@ Defaults match the table below.
 | `[output]` | `format` | `"text"` |
 | `[walk]` | `extensions` | `["rs"]` |
 | `[walk]` | `exclude` | `["target", ".git", "fixtures", "node_modules", "vendor", ".venv", "venv", "dist", "__pycache__"]` |
+| `[walk]` | `exclude_replace` | `false` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
 | `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
-Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults. Defaults skip common dependency and build dirs across Rust,
-Node, Go, and Python. Add `"tests"` to skip integration-test trees if desired.
+Setting `walk.exclude` in TOML **merges** with the built-in defaults (deduped).
+Defaults skip common dependency and build dirs across Rust, Node, Go, and
+Python. Add `"tests"` to skip integration-test trees. Set
+`walk.exclude_replace = true` (or pass `--exclude-only`) to use only the listed
+names.
 
 ## How detection works
 

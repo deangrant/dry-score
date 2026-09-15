@@ -94,6 +94,7 @@ fn try_apply_walk_lists(
     match arg {
         "--extensions" => Some(apply_extensions(args, raw)),
         "--exclude" => Some(apply_exclude(args, raw)),
+        "--exclude-only" => Some(apply_exclude_only(args, raw)),
         _ => None,
     }
 }
@@ -195,6 +196,15 @@ fn apply_exclude(
     Ok(())
 }
 
+fn apply_exclude_only(
+    args: &mut impl Iterator<Item = String>,
+    raw: &mut RawFlags,
+) -> Result<(), CliError> {
+    // dry-rs:ignore. CC-driven one-flag CLI helpers; parallel shape is intentional.
+    raw.exclude_only = Some(parse_csv_list(&require_value(args, "--exclude-only")?));
+    Ok(())
+}
+
 fn apply_json_out(
     args: &mut impl Iterator<Item = String>,
     raw: &mut RawFlags,
@@ -235,8 +245,17 @@ fn overlay_walk_flags(raw: &RawFlags, config: &mut Config) {
     if let Some(extensions) = &raw.extensions {
         config.walk.extensions.clone_from(extensions);
     }
+    overlay_exclude_flags(raw, config);
+}
+
+fn overlay_exclude_flags(raw: &RawFlags, config: &mut Config) {
+    if let Some(exclude_only) = &raw.exclude_only {
+        config.walk.exclude.clone_from(exclude_only);
+        config.walk.exclude_replace = true;
+        return;
+    }
     if let Some(exclude) = &raw.exclude {
-        config.walk.exclude.clone_from(exclude);
+        config.walk.exclude = crate::merge_excludes(&config.walk.exclude, exclude);
     }
 }
 
