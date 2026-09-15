@@ -26,6 +26,21 @@ fail() {
   exit 1
 }
 
+# Runs a dogfood scan, tees the text report, and requires findings=0.
+# Args: failure label, then the cargo/command argv.
+require_findings_zero() {
+  local label="$1"
+  shift
+  local tmp
+  tmp="$(mktemp)"
+  "$@" | tee "$tmp"
+  if ! grep -q 'findings=0' "$tmp"; then
+    rm -f "$tmp"
+    fail "${label} reported findings (expected findings=0)"
+  fi
+  rm -f "$tmp"
+}
+
 run_lite() {
   step "cargo fmt --all"
   cargo fmt --all
@@ -47,33 +62,20 @@ run_full() {
   cargo audit
 
   step "dry-rs self-scan (require findings=0)"
-  local report
-  report="$(cargo run -q -p dry-rs -- . --format text --no-fail-on-findings)"
-  echo "$report"
-  if ! echo "$report" | grep -q 'findings=0'; then
-    fail "dry-rs reported findings (expected findings=0)"
-  fi
+  require_findings_zero "dry-rs" \
+    cargo run -q -p dry-rs -- . --format text --no-fail-on-findings
 
   step "dry-go dogfood scan (require findings=0)"
-  report="$(cargo run -q -p dry-go -- crates/dry-go/dogfood --format text --no-fail-on-findings)"
-  echo "$report"
-  if ! echo "$report" | grep -q 'findings=0'; then
-    fail "dry-go reported findings (expected findings=0)"
-  fi
+  require_findings_zero "dry-go" \
+    cargo run -q -p dry-go -- crates/dry-go/dogfood --format text --no-fail-on-findings
 
   step "dry-ts dogfood scan (require findings=0)"
-  report="$(cargo run -q -p dry-ts -- crates/dry-ts/dogfood --format text --no-fail-on-findings)"
-  echo "$report"
-  if ! echo "$report" | grep -q 'findings=0'; then
-    fail "dry-ts reported findings (expected findings=0)"
-  fi
+  require_findings_zero "dry-ts" \
+    cargo run -q -p dry-ts -- crates/dry-ts/dogfood --format text --no-fail-on-findings
 
   step "dry-py dogfood scan (require findings=0)"
-  report="$(cargo run -q -p dry-py -- crates/dry-py/dogfood --format text --no-fail-on-findings)"
-  echo "$report"
-  if ! echo "$report" | grep -q 'findings=0'; then
-    fail "dry-py reported findings (expected findings=0)"
-  fi
+  require_findings_zero "dry-py" \
+    cargo run -q -p dry-py -- crates/dry-py/dogfood --format text --no-fail-on-findings
 }
 
 echo "verify: tier=$TIER (cwd=$ROOT)"

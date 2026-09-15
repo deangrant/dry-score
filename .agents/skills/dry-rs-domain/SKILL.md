@@ -100,4 +100,5 @@ use matching markers (`dry-go`, `dry-ts`, `dry-py` with `#` for Python). See
 ## Fixtures
 
 Under [`crates/dry-rs/tests/fixtures/`](../../../crates/dry-rs/tests/fixtures/):
-`type_1_exact`, `type_2_renamed`, `type_3_near_miss`, `non_clone`.
+`type_1_exact`, `type_2_renamed`, `type_3_near_miss`, `non_clone`,
+`nested_closures`, `type_1_methods`, `test_kind_no_pair`.

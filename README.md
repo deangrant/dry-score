@@ -175,6 +175,9 @@ Intentional corpora live under
 | `type_2_renamed` | Same structure, renamed locals/params |
 | `type_3_near_miss` | Shared structure with a small edit |
 | `non_clone` | Similar names, different control flow (no findings) |
+| `nested_closures` | Twin nested closures (Type-1) |
+| `type_1_methods` | Twin `impl` methods (Type-1) |
+| `test_kind_no_pair` | Production vs `#[test]` forms never pair |
 
 ## CI and local verify
 

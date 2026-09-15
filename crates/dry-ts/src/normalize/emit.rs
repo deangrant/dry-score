@@ -120,6 +120,7 @@ fn try_emit_text_leaf(node: Node<'_>) -> Option<NormNode> {
 }
 
 fn has_template_substitution(node: Node<'_>) -> bool {
+    // dry-rs:ignore. Tree-sitter child-walk helper; parallel shape is intentional.
     let mut cursor = node.walk();
     node.named_children(&mut cursor)
         .any(|child| child.kind() == "template_substitution")
