@@ -113,10 +113,14 @@ fn try_emit_number_leaf(node: Node<'_>, source: &[u8]) -> Option<NormNode> {
 fn try_emit_text_leaf(node: Node<'_>) -> Option<NormNode> {
     match node.kind() {
         "string" | "string_fragment" => Some(NormNode::leaf("lit_str")),
-        "template_string" if !has_template_substitution(node) => Some(NormNode::leaf("lit_str")),
+        "template_string" => emit_plain_template_leaf(node),
         "regex" => Some(NormNode::leaf("lit_regex")),
         _ => None,
     }
+}
+
+fn emit_plain_template_leaf(node: Node<'_>) -> Option<NormNode> {
+    (!has_template_substitution(node)).then(|| NormNode::leaf("lit_str"))
 }
 
 fn has_template_substitution(node: Node<'_>) -> bool {

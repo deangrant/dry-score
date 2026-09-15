@@ -119,24 +119,37 @@ fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliEr
     }
     let mut config = load_effective_config(raw.config_path.as_deref(), &raw.paths[0])?;
     overlay_cli_onto_config(&raw, &mut config);
-    if options.force_extensions.is_some() && raw.extensions.is_some() {
-        let fixed = options.force_extensions.as_ref().map_or(String::new(), |exts| exts.join(", "));
-        return Err(CliError::usage(format!(
-            "--extensions is not supported for {}; extensions are fixed to [{fixed}]",
-            options.bin_name
-        )));
-    }
-    if let Some(extensions) = &options.force_extensions {
-        config.walk.extensions.clone_from(extensions);
-    }
-    validate_threshold(config.gate.threshold).map_err(|err| CliError::usage(err.to_string()))?;
-    validate_walk_numerics(&config.walk).map_err(|err| CliError::usage(err.to_string()))?;
+    reject_cli_extensions_when_forced(&raw, options)?;
+    apply_forced_extensions(options, &mut config);
+    validate_cli_config(&config)?;
     Ok(CliArgs {
         paths: raw.paths,
         config,
         json_out: raw.json_out,
         bin_name: options.bin_name,
     })
+}
+
+fn reject_cli_extensions_when_forced(raw: &RawFlags, options: &CliOptions) -> Result<(), CliError> {
+    if options.force_extensions.is_none() || raw.extensions.is_none() {
+        return Ok(());
+    }
+    let fixed = options.force_extensions.as_ref().map_or(String::new(), |exts| exts.join(", "));
+    Err(CliError::usage(format!(
+        "--extensions is not supported for {}; extensions are fixed to [{fixed}]",
+        options.bin_name
+    )))
+}
+
+fn apply_forced_extensions(options: &CliOptions, config: &mut Config) {
+    if let Some(extensions) = &options.force_extensions {
+        config.walk.extensions.clone_from(extensions);
+    }
+}
+
+fn validate_cli_config(config: &Config) -> Result<(), CliError> {
+    validate_threshold(config.gate.threshold).map_err(|err| CliError::usage(err.to_string()))?;
+    validate_walk_numerics(&config.walk).map_err(|err| CliError::usage(err.to_string()))
 }
 
 fn load_effective_config(explicit: Option<&Path>, first_root: &Path) -> Result<Config, CliError> {
