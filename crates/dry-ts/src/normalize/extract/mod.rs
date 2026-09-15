@@ -327,6 +327,66 @@ function host(n: number): number {
         assert_eq!(arrows[0].fingerprints, arrows[1].fingerprints);
     }
 
+    #[test]
+    fn parent_bags_ignore_nested_body_differences() {
+        // Same outer shape, different nested bodies: parents share bags (stub);
+        // nested forms diverge.
+        let src = parent_ignore_nested_ts_source();
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(Path::new("stub.ts"), src).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.tree.root_node(),
+            Path::new("stub.ts"),
+            src.as_bytes(),
+            src,
+            3,
+            2,
+            &mut next_id,
+        );
+        #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+        let left = forms.iter().find(|f| f.name == "left").expect("left");
+        #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+        let right = forms.iter().find(|f| f.name == "right").expect("right");
+        assert_eq!(
+            left.fingerprints, right.fingerprints,
+            "stubbed parents should match when only nested bodies differ"
+        );
+        let arrows: Vec<_> = forms.iter().filter(|f| f.name == "c").collect();
+        assert!(arrows.len() >= 2, "expected nested arrows, got {forms:?}");
+        assert_ne!(arrows[0].fingerprints, arrows[1].fingerprints);
+    }
+
+    fn parent_ignore_nested_ts_source() -> &'static str {
+        r"function left(): number {
+  const c = (n: number): number => {
+    let acc = n;
+    if (acc < 0) {
+      acc = 0 - acc;
+    }
+    return acc + 1;
+  };
+  const x = 1;
+  const y = x + 2;
+  const z = y + 3;
+  return c(z);
+}
+function right(): number {
+  const c = (n: number): number => {
+    let acc = n;
+    while (acc > 0) {
+      acc = acc - 1;
+    }
+    return acc * 2;
+  };
+  const x = 1;
+  const y = x + 2;
+  const z = y + 3;
+  return c(z);
+}
+"
+    }
+
     fn parent_stub_ts_source() -> &'static str {
         r"function alpha(): number {
   const c = (n: number): number => {

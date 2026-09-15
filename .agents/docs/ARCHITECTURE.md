@@ -305,9 +305,11 @@ flowchart TB
 
 `dry-rs` is a local analysis tool. The binary does not open network sockets or
 execute untrusted code. The walker does not follow file or directory symlinks,
-and rejects a symlink as an analysis root. Symlink refusal is best-effort on a
-**stable** tree: concurrent replacement of a discovered path between walk and
-`read_to_string` (TOCTOU) is out of scope for the local trusted-operator model.
+and rejects a symlink as an analysis root. Symlink-root refusal and related walk
+tests are exercised under `#[cfg(unix)]` (CI targets Linux); there is no
+Windows junction harness. Symlink refusal is best-effort on a **stable** tree:
+concurrent replacement of a discovered path between walk and `read_to_string`
+(TOCTOU) is out of scope for the local trusted-operator model.
 `--json-out` writes or overwrites any user-supplied path and is not confined to
 analysis roots (same pattern as typical report CLIs). Residual risk is local
 filesystem read/write under the operator's credentials—not remote code

@@ -127,6 +127,53 @@ fn analyze_relative_root_still_emits_relative_paths() {
 }
 
 #[test]
+fn analyze_mixed_abs_rel_roots_emit_relative_member_paths() {
+    let (abs_root, rel_root) = mixed_abs_rel_fixture();
+    #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
+    let result = analyze(
+        &[abs_root.clone(), rel_root.clone()],
+        &Config::default(),
+        &StubNormalizer {
+            fail: false,
+            soft_warnings: Vec::new(),
+        },
+        "dry-core",
+    )
+    .expect("ok");
+    assert_eq!(result.report.findings.len(), 1);
+    assert_mixed_root_members_relative(&result.report.findings[0].members);
+    let _ = fs::remove_dir_all(abs_root);
+    let _ = fs::remove_dir_all(rel_root);
+}
+
+fn mixed_abs_rel_fixture() -> (PathBuf, PathBuf) {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let abs_root = std::env::temp_dir().join(format!("dry-rs-analyze-absroot-{stamp}"));
+    let rel_root = PathBuf::from(format!("target/dry-rs-analyze-mixrel-{stamp}"));
+    assert!(fs::create_dir_all(&abs_root).is_ok());
+    assert!(fs::create_dir_all(&rel_root).is_ok());
+    assert!(fs::write(abs_root.join("a.rs"), "fn a() { let x = 1; }\n").is_ok());
+    assert!(fs::write(rel_root.join("b.rs"), "fn b() { let y = 2; }\n").is_ok());
+    #[expect(clippy::expect_used, reason = "test needs absolute root")]
+    let abs_root = abs_root.canonicalize().expect("canonicalize");
+    assert!(rel_root.is_relative(), "second root must stay relative");
+    (abs_root, rel_root)
+}
+
+fn assert_mixed_root_members_relative(members: &[crate::domain::FormMember]) {
+    assert!(
+        members.iter().all(|m| m.path.is_relative()),
+        "members={members:?}"
+    );
+    let names: Vec<_> = members
+        .iter()
+        .map(|m| m.path.file_name().map(std::ffi::OsStr::to_owned))
+        .collect();
+    assert!(names.contains(&Some(std::ffi::OsString::from("a.rs"))));
+    assert!(names.contains(&Some(std::ffi::OsString::from("b.rs"))));
+}
+
+#[test]
 fn normalize_merge_assigns_ids_in_file_order() {
     let (files, root) = two_file_fixture("ids");
     let (forms, warnings, scanned) = normalize_sources(

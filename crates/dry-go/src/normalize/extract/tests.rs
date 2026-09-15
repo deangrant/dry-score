@@ -66,6 +66,7 @@ func (t T) Value(n int) int {
 #[test]
 fn kind_from_test_file_and_ignore_span() {
     assert_eq!(kind_from_path(Path::new("foo_test.go")), FormKind::Test);
+    assert_eq!(kind_from_path(Path::new("foo.go")), FormKind::Production);
     let src = r"package p
 func kept(n int) int {
   // dry-go:ignore
@@ -271,6 +272,70 @@ fn parent_bags_stub_nested_func_literals() {
         "expected nested literals, got {forms:?}"
     );
     assert_eq!(literals[0].fingerprints, literals[1].fingerprints);
+}
+
+#[test]
+fn parent_bags_ignore_nested_body_differences() {
+    // Same outer shape, different nested bodies: parents share bags (stub);
+    // nested forms diverge.
+    let src = parent_ignore_nested_go_source();
+    #[expect(clippy::expect_used, reason = "test setup")]
+    let tree = parse_source(src).expect("parse");
+    let mut next_id = 1;
+    let forms = extract_forms(
+        tree.tree.root_node(),
+        Path::new("stub.go"),
+        src.as_bytes(),
+        src,
+        3,
+        2,
+        &mut next_id,
+    );
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let left = forms.iter().find(|f| f.name == "left").expect("left");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let right = forms.iter().find(|f| f.name == "right").expect("right");
+    assert_eq!(
+        left.fingerprints, right.fingerprints,
+        "stubbed parents should match when only nested bodies differ"
+    );
+    let literals: Vec<_> = forms.iter().filter(|f| f.name.contains("$literal:")).collect();
+    assert!(
+        literals.len() >= 2,
+        "expected nested literals, got {forms:?}"
+    );
+    assert_ne!(literals[0].fingerprints, literals[1].fingerprints);
+}
+
+fn parent_ignore_nested_go_source() -> &'static str {
+    r"package p
+func left() int {
+  c := func(n int) int {
+    acc := n
+    if acc < 0 {
+      acc = 0 - acc
+    }
+    return acc + 1
+  }
+  x := 1
+  y := x + 2
+  z := y + 3
+  return c(z)
+}
+func right() int {
+  c := func(n int) int {
+    acc := n
+    for acc > 0 {
+      acc = acc - 1
+    }
+    return acc * 2
+  }
+  x := 1
+  y := x + 2
+  z := y + 3
+  return c(z)
+}
+"
 }
 
 fn parent_stub_go_source() -> &'static str {
