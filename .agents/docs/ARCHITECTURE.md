@@ -198,11 +198,11 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-rs/src/normalize/mod.rs) | `RustNormalizer` / `LanguageNormalizer` |
 | Extract | [`normalize/extract/`](../../crates/dry-rs/src/normalize/extract/) | Named forms from items, impls, trait defaults, and closures (`$closure:L{line}`) |
 | Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand to expr children; others keep token-tree shape |
-| Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission (expr, pat, lit, mac, ops) |
+| Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission; nested closures stubbed as leaf in parent bags |
 | Expr wrap | [`normalize/emit/expr/wrap.rs`](../../crates/dry-rs/src/normalize/emit/expr/wrap.rs) | Recursive emit helpers (optional, unary, block, pair, range) |
 | Shared emit | [`normalize/emit/shared.rs`](../../crates/dry-rs/src/normalize/emit/shared.rs) | Pure helpers only (must not import `expr`) |
 | Fingerprint | [`norm/fingerprint.rs`](../../crates/dry-core/src/norm/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint bag (hash → count) |
-| Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` (`//`, `///`, `//!`, `/* */`) |
 | Placeholders | [`placeholders.rs`](../../crates/dry-core/src/placeholders.rs) | Positional ident renaming |
 | Tree | [`norm/tree.rs`](../../crates/dry-core/src/norm/tree.rs) | `NormNode` leaf and branch |
 
@@ -219,8 +219,8 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
 | Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; `has_error` fails closed (no forms) |
 | Extract | [`normalize/extract/`](../../crates/dry-go/src/normalize/extract/) | Funcs, methods, `func_literal` |
-| Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode` |
-| Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` |
+| Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode`; nested `func_literal` stubbed in parent bags |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` (`//`, `///`, `//!`, `/* */`) |
 
 ## `dry-ts` module map
 
@@ -236,8 +236,8 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-ts/src/normalize/mod.rs) | `TsNormalizer` / `LanguageNormalizer`; skips `*.d.ts` |
 | Parse | [`normalize/parse.rs`](../../crates/dry-ts/src/normalize/parse.rs) | Dual thread-local TS / TSX parsers; `has_error` fails closed (no forms) |
 | Extract | [`normalize/extract/`](../../crates/dry-ts/src/normalize/extract/) | Funcs, methods, arrows, function expressions |
-| Emit | [`normalize/emit.rs`](../../crates/dry-ts/src/normalize/emit.rs) | CST → `NormNode` |
-| Suppress | [`normalize/suppress.rs`](../../crates/dry-ts/src/normalize/suppress.rs) | Full-line `dry-ts:ignore` |
+| Emit | [`normalize/emit.rs`](../../crates/dry-ts/src/normalize/emit.rs) | CST → `NormNode`; nested arrows/function expressions stubbed in parent bags |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-ts/src/normalize/suppress.rs) | Full-line `dry-ts:ignore` (`//`, `///`, `//!`, `/* */`) |
 
 *Figure: `main` → runner → CLI and analyze; the normalizer extracts, emits,
 fingerprints, and applies suppress markers.*

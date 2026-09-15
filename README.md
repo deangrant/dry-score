@@ -76,14 +76,13 @@ Defaults match the table below.
 | `[gate]` | `fail_on_findings` | `false` |
 | `[output]` | `format` | `"text"` |
 | `[walk]` | `extensions` | `["rs"]` |
-| `[walk]` | `exclude` | `["target", ".git", "fixtures", "tests"]` |
+| `[walk]` | `exclude` | `["target", ".git", "fixtures"]` |
 | `[walk]` | `min_nodes` | `10` |
 | `[walk]` | `min_lines` | `3` |
 | `[walk]` | `max_file_bytes` | `2097152` (2 MiB) |
 
 Setting `walk.exclude` in TOML **replaces** the default list. It does not merge
-with the defaults. The default list includes `tests`, so integration-test
-duplication is not scanned unless you override `walk.exclude`.
+with the defaults. Add `"tests"` to skip integration-test trees if desired.
 
 ## How detection works
 
@@ -130,11 +129,13 @@ Deep module maps and invariants:
 
 ## Suppressions
 
-Use a **full-line** `//` comment (optional leading whitespace). Trailing
-comments and string substrings do not count.
+Use a **full-line** comment directive (optional leading whitespace): `//`,
+`///`, `//!`, or a whole-line `/* … */`. Trailing comments and string
+substrings do not count.
 
 - Span: `// dry-rs:ignore` or `// dry-rs:ignore. reason`
 - File: `// dry-rs:ignore-file` near the top of the file
+- Doc/block forms (`///`, `//!`, `/* … */`) are also recognized
 
 ## Exit codes
 

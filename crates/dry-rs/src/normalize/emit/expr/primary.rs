@@ -1,6 +1,5 @@
 //! Primary expression emitters.
 
-use super::super::emit_pat;
 use super::super::ops::{bin_op_label, un_op_label};
 use super::super::shared::{emit_path_segments, member_name};
 use super::emit_expr;
@@ -82,13 +81,12 @@ pub(super) fn emit_field(field: &syn::ExprField, placeholders: &mut PlaceholderM
 }
 
 pub(super) fn emit_closure(
-    closure: &syn::ExprClosure,
-    placeholders: &mut PlaceholderMap,
+    _closure: &syn::ExprClosure,
+    _placeholders: &mut PlaceholderMap,
 ) -> NormNode {
-    let mut children: Vec<NormNode> =
-        closure.inputs.iter().map(|pat| emit_pat(pat, placeholders)).collect();
-    children.push(emit_expr(&closure.body, placeholders));
-    NormNode::branch("closure", children)
+    // Stub only: nested closures are extracted as their own forms. Embedding
+    // the full body here would inflate parent–parent similarity.
+    NormNode::leaf("closure")
 }
 
 #[cfg(test)]

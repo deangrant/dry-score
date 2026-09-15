@@ -240,3 +240,66 @@ fn maybe_emit_skips_nodes_without_body() {
     maybe_emit_literal(root, None, &mut ctx);
     assert!(ctx.forms.is_empty());
 }
+
+#[test]
+fn parent_bags_stub_nested_func_literals() {
+    let src = parent_stub_go_source();
+    #[expect(clippy::expect_used, reason = "test setup")]
+    let tree = parse_source(src).expect("parse");
+    let mut next_id = 1;
+    let forms = extract_forms(
+        tree.tree.root_node(),
+        Path::new("stub.go"),
+        src.as_bytes(),
+        src,
+        3,
+        2,
+        &mut next_id,
+    );
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let alpha = forms.iter().find(|f| f.name == "alpha").expect("alpha");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let beta = forms.iter().find(|f| f.name == "beta").expect("beta");
+    let score = dry_core::compare::jaccard(&alpha.fingerprints, &beta.fingerprints);
+    assert!(
+        score < 0.85,
+        "parent bags should differ without nested inflation; score={score}"
+    );
+    let literals: Vec<_> = forms.iter().filter(|f| f.name.contains("$literal:")).collect();
+    assert!(
+        literals.len() >= 2,
+        "expected nested literals, got {forms:?}"
+    );
+    assert_eq!(literals[0].fingerprints, literals[1].fingerprints);
+}
+
+fn parent_stub_go_source() -> &'static str {
+    r"package p
+func alpha() int {
+  c := func(n int) int {
+    acc := n
+    if acc < 0 {
+      acc = 0 - acc
+    }
+    return acc + 1
+  }
+  x := 1
+  y := x + 2
+  z := y + 3
+  return c(z)
+}
+func beta() int {
+  c := func(n int) int {
+    acc := n
+    if acc < 0 {
+      acc = 0 - acc
+    }
+    return acc + 1
+  }
+  a := 10
+  b := a * 2
+  d := b - 1
+  return c(d)
+}
+"
+}

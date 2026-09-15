@@ -37,8 +37,9 @@ gates.
 
 ## Ignore marker format
 
-Markers must be a **full-line** `//` comment (optional leading whitespace).
-Trailing comments and string substrings do not count. See
+Markers must be a **full-line** comment directive (optional leading whitespace):
+`//`, `///`, `//!`, or a whole-line `/* … */`. Trailing comments and string
+substrings do not count. See
 [`suppress.rs`](../../../crates/dry-rs/src/normalize/suppress.rs).
 
 ```rust

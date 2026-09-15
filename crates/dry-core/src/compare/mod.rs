@@ -198,6 +198,7 @@ fn unclaimed_sorted<'a>(
     forms: &'a [NormalizedForm],
     claimed: &BTreeSet<u64>,
 ) -> Vec<&'a NormalizedForm> {
+    // dry-rs:ignore. Collect-then-sort helper; parallel with members_from_indices.
     let mut remaining: Vec<&NormalizedForm> = forms
         .iter()
         .filter(|f| !claimed.contains(&f.id) && !f.fingerprints.is_empty())
@@ -319,6 +320,7 @@ pub(super) fn within_jaccard_window(left_len: usize, right_len: usize, threshold
 }
 
 fn members_from_indices(forms: &[NormalizedForm], indices: &[usize]) -> Vec<FormMember> {
+    // dry-rs:ignore. Collect-then-sort helper; parallel with unclaimed_sorted.
     let mut members: Vec<FormMember> = indices
         .iter()
         .map(|&i| FormMember::new(forms[i].path.clone(), forms[i].span, forms[i].name.clone()))
@@ -336,6 +338,7 @@ fn sort_findings(findings: &mut [Finding]) {
 }
 
 fn member_sort_key(finding: &Finding) -> (String, u32, String) {
+    // dry-rs:ignore. Thin map-or-default; parallel shape with path_segment_leaves.
     finding
         .members
         .first()

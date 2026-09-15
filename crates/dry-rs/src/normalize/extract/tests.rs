@@ -247,6 +247,111 @@ fn nested_closures_with_identical_bodies_share_fingerprints() {
 }
 
 #[test]
+fn parent_bags_stub_nested_closures() {
+    // Identical nested bodies, different surrounding code: parents must not
+    // share near-identical bags solely from nested content. Nested forms still
+    // match each other.
+    let source = r"
+            fn alpha() -> i32 {
+                let c = |n: i32| {
+                    let mut acc = n;
+                    if acc < 0 {
+                        acc = 0 - acc;
+                    }
+                    acc + 1
+                };
+                let x = 1;
+                let y = x + 2;
+                let z = y + 3;
+                c(z)
+            }
+            fn beta() -> i32 {
+                let c = |n: i32| {
+                    let mut acc = n;
+                    if acc < 0 {
+                        acc = 0 - acc;
+                    }
+                    acc + 1
+                };
+                let a = 10;
+                let b = a * 2;
+                let d = b - 1;
+                c(d)
+            }
+        ";
+    let forms = extract(source);
+    let alpha = forms.iter().find(|f| f.name == "alpha");
+    let beta = forms.iter().find(|f| f.name == "beta");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let alpha = alpha.expect("alpha form");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let beta = beta.expect("beta form");
+    let score = dry_core::compare::jaccard(&alpha.fingerprints, &beta.fingerprints);
+    assert!(
+        score < 0.85,
+        "parent bags should differ without nested inflation; score={score}"
+    );
+
+    let closures: Vec<_> = forms.iter().filter(|f| f.name.contains("$closure:")).collect();
+    assert!(
+        closures.len() >= 2,
+        "expected nested closures, got {forms:?}"
+    );
+    assert_eq!(closures[0].fingerprints, closures[1].fingerprints);
+}
+
+#[test]
+fn parent_bags_ignore_nested_body_differences() {
+    // Same outer shape, different nested bodies: parents share bags (stub);
+    // nested forms diverge.
+    let source = r"
+            fn left() -> i32 {
+                let c = |n: i32| {
+                    let mut acc = n;
+                    if acc < 0 {
+                        acc = 0 - acc;
+                    }
+                    acc + 1
+                };
+                let x = 1;
+                let y = x + 2;
+                let z = y + 3;
+                c(z)
+            }
+            fn right() -> i32 {
+                let c = |n: i32| {
+                    let mut acc = n;
+                    while acc > 0 {
+                        acc = acc - 1;
+                    }
+                    acc * 2
+                };
+                let x = 1;
+                let y = x + 2;
+                let z = y + 3;
+                c(z)
+            }
+        ";
+    let forms = extract(source);
+    let left = forms.iter().find(|f| f.name == "left");
+    let right = forms.iter().find(|f| f.name == "right");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let left = left.expect("left form");
+    #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+    let right = right.expect("right form");
+    assert_eq!(
+        left.fingerprints, right.fingerprints,
+        "stubbed parents should match when only nested bodies differ"
+    );
+    let closures: Vec<_> = forms.iter().filter(|f| f.name.contains("$closure:")).collect();
+    assert!(
+        closures.len() >= 2,
+        "expected nested closures, got {forms:?}"
+    );
+    assert_ne!(closures[0].fingerprints, closures[1].fingerprints);
+}
+
+#[test]
 #[expect(
     clippy::too_many_lines,
     reason = "coverage corpus hits ignore, expr-body, tiny, and nameless closures"

@@ -166,8 +166,12 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn extracts_class_methods_and_named_functions() {
-        let src = r"class Counter {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "merged extract corpus covers class, named, and nested arrow forms"
+    )]
+    fn extracts_class_methods_named_functions_and_nested_arrows() {
+        let class_src = r"class Counter {
   scoreLeft(input: number, factor: number): number {
     let total = input;
     if (total < 0) {
@@ -188,13 +192,13 @@ function host(n: number): number {
 }
 ";
         #[expect(clippy::expect_used, reason = "test setup")]
-        let tree = parse_source(Path::new("run.ts"), src).expect("parse");
+        let tree = parse_source(Path::new("run.ts"), class_src).expect("parse");
         let mut next_id = 1;
         let forms = extract_forms(
             tree.tree.root_node(),
             Path::new("run.ts"),
-            src.as_bytes(),
-            src,
+            class_src.as_bytes(),
+            class_src,
             3,
             2,
             &mut next_id,
@@ -204,6 +208,44 @@ function host(n: number): number {
             "forms={forms:?}"
         );
         assert!(forms.iter().any(|f| f.name == "host"), "forms={forms:?}");
+
+        let nested_src = r"function withClosures(): number {
+  const left = (n: number): number => {
+    let acc = n;
+    if (acc < 0) {
+      acc = 0 - acc;
+    }
+    return acc + 1;
+  };
+  const right = function (n: number): number {
+    let acc = n;
+    if (acc < 0) {
+      acc = 0 - acc;
+    }
+    return acc + 1;
+  };
+  return left(3) + right(4);
+}
+";
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let nested_tree = parse_source(Path::new("lit.ts"), nested_src).expect("parse");
+        let nested_forms = extract_forms(
+            nested_tree.tree.root_node(),
+            Path::new("lit.ts"),
+            nested_src.as_bytes(),
+            nested_src,
+            3,
+            2,
+            &mut next_id,
+        );
+        assert!(
+            nested_forms.iter().any(|f| f.name.contains("left")),
+            "arrow forms={nested_forms:?}"
+        );
+        assert!(
+            nested_forms.iter().any(|f| f.name.contains("right")),
+            "function expression forms={nested_forms:?}"
+        );
     }
 
     #[test]
@@ -239,48 +281,6 @@ function host(n: number): number {
     }
 
     #[test]
-    fn extracts_nested_arrows_with_parent_names() {
-        let src = r"function withClosures(): number {
-  const left = (n: number): number => {
-    let acc = n;
-    if (acc < 0) {
-      acc = 0 - acc;
-    }
-    return acc + 1;
-  };
-  const right = function (n: number): number {
-    let acc = n;
-    if (acc < 0) {
-      acc = 0 - acc;
-    }
-    return acc + 1;
-  };
-  return left(3) + right(4);
-}
-";
-        #[expect(clippy::expect_used, reason = "test setup")]
-        let tree = parse_source(Path::new("lit.ts"), src).expect("parse");
-        let mut next_id = 1;
-        let forms = extract_forms(
-            tree.tree.root_node(),
-            Path::new("lit.ts"),
-            src.as_bytes(),
-            src,
-            3,
-            2,
-            &mut next_id,
-        );
-        assert!(
-            forms.iter().any(|f| f.name.contains("left")),
-            "arrow forms={forms:?}"
-        );
-        assert!(
-            forms.iter().any(|f| f.name.contains("right")),
-            "function expression forms={forms:?}"
-        );
-    }
-
-    #[test]
     fn below_thresholds_drops_tiny_forms() {
         let tiny = "function tiny() { return 1; }\n";
         #[expect(clippy::expect_used, reason = "test setup")]
@@ -296,5 +296,64 @@ function host(n: number): number {
             &mut next_id,
         );
         assert!(forms.is_empty(), "below thresholds: {forms:?}");
+    }
+
+    #[test]
+    fn parent_bags_stub_nested_arrows() {
+        let src = parent_stub_ts_source();
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let tree = parse_source(Path::new("stub.ts"), src).expect("parse");
+        let mut next_id = 1;
+        let forms = extract_forms(
+            tree.tree.root_node(),
+            Path::new("stub.ts"),
+            src.as_bytes(),
+            src,
+            3,
+            2,
+            &mut next_id,
+        );
+        #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+        let alpha = forms.iter().find(|f| f.name == "alpha").expect("alpha");
+        #[expect(clippy::expect_used, reason = "test asserts extract found parents")]
+        let beta = forms.iter().find(|f| f.name == "beta").expect("beta");
+        let score = dry_core::compare::jaccard(&alpha.fingerprints, &beta.fingerprints);
+        assert!(
+            score < 0.85,
+            "parent bags should differ without nested inflation; score={score}"
+        );
+        let arrows: Vec<_> = forms.iter().filter(|f| f.name == "c").collect();
+        assert!(arrows.len() >= 2, "expected nested arrows, got {forms:?}");
+        assert_eq!(arrows[0].fingerprints, arrows[1].fingerprints);
+    }
+
+    fn parent_stub_ts_source() -> &'static str {
+        r"function alpha(): number {
+  const c = (n: number): number => {
+    let acc = n;
+    if (acc < 0) {
+      acc = 0 - acc;
+    }
+    return acc + 1;
+  };
+  const x = 1;
+  const y = x + 2;
+  const z = y + 3;
+  return c(z);
+}
+function beta(): number {
+  const c = (n: number): number => {
+    let acc = n;
+    if (acc < 0) {
+      acc = 0 - acc;
+    }
+    return acc + 1;
+  };
+  const a = 10;
+  const b = a * 2;
+  const d = b - 1;
+  return c(d);
+}
+"
     }
 }

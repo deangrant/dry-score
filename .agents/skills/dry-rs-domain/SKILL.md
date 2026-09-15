@@ -36,6 +36,8 @@ discover files → parse/normalize → fingerprint index → match → report
 - Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
   test/cfg attrs (language-idiomatic vs Go `_test.go` vs TypeScript
   `.test.` / `.spec.` / `__tests__`).
+- Nested extractable units (`closure` / `func_literal` / arrows) are **stubbed**
+  in parent body fingerprints; nested forms still fingerprint their own bodies.
 - Allowlisted macros expand to normalized expr children (`macro_expand:…`);
   others keep token-tree emission.
 - Emit helpers: recursive expr wrappers live under `normalize/emit/expr/`;
@@ -64,7 +66,8 @@ discover files → parse/normalize → fingerprint index → match → report
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
-- Default `walk.exclude` includes `tests` (replacement list, not merge).
+- Default `walk.exclude` is `target`, `.git`, `fixtures` (replacement list, not
+  merge). Add `tests` explicitly to skip test trees.
 - Walker does **not** follow symlinks; a symlink analysis root errors.
 - Go / TypeScript parse fails closed on `has_error` (no forms; analyze records
   a warning), matching Rust `syn` parse failure.

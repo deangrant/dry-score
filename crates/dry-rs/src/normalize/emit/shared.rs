@@ -29,6 +29,7 @@ pub(super) fn emit_path_segments(path: &Path, placeholders: &mut PlaceholderMap)
 
 /// Placeholder leaves for each path segment (struct/tuple-struct path heads).
 pub(super) fn path_segment_leaves(path: &Path, placeholders: &mut PlaceholderMap) -> Vec<NormNode> {
+    // dry-rs:ignore. Thin iterator map; parallel shape with member_sort_key.
     path.segments
         .iter()
         .map(|seg| NormNode::leaf(placeholders.placeholder(&seg.ident.to_string())))

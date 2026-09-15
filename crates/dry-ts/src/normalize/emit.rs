@@ -14,10 +14,21 @@ pub(super) fn emit_node(
     if should_skip(node) {
         return NormNode::leaf("skip");
     }
+    if is_nested_form_kind(node.kind()) {
+        // Nested arrows/functions are extracted as their own forms; stub here.
+        return NormNode::leaf(node.kind());
+    }
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
         return leaf;
     }
     emit_branch(node, source, placeholders)
+}
+
+fn is_nested_form_kind(kind: &str) -> bool {
+    matches!(
+        kind,
+        "arrow_function" | "function_expression" | "generator_function"
+    )
 }
 
 fn emit_branch(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMap) -> NormNode {
