@@ -46,7 +46,9 @@ discover files → parse/normalize → fingerprint index → match → report
 
 1. Exact buckets (identical fingerprint bags) → score `1.0`
 2. Near-miss via inverted index + multiset Jaccard connected components
-   (window on `Σ` counts); production vs test forms never pair
+   (window on `Σ` counts; score is min pairwise among members; non-threshold-
+   closed components split into exclusive pairs); production vs test forms
+   never pair
 3. Sort most exact → least exact
 
 ## Labels

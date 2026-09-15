@@ -147,8 +147,9 @@ flowchart TD
 Identical fingerprint bags score `1.0`. Identifier traces then label the clone
 as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
 fingerprint index and connected-component near-miss multiset Jaccard (Type-3;
-score is the minimum edge Jaccard in the component; window uses total bag size
-`Σ` counts). Production and test forms (`FormKind`) never pair. Findings sort
+score is the minimum pairwise Jaccard among members; components that are not
+threshold-closed split into exclusive pairs; window uses total bag size `Σ`
+counts). Production and test forms (`FormKind`) never pair. Findings sort
 most exact to least exact.
 
 JSON reports serialize fingerprints as a map from hash string/number to count

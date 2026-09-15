@@ -227,34 +227,65 @@ fn near_miss_skips_out_of_window_shared_fingerprint() {
     assert!(compare(&forms, 0.9).is_empty());
 }
 
-#[test]
-fn near_miss_clusters_clique_and_chain_components() {
-    // Clique: all pairs near-miss. Chain: A~B and B~C only (A~C below threshold).
-    let clique = [
-        form(1, 4, &[1, 2, 3, 4], &["a"]),
-        form(2, 4, &[1, 2, 3, 5], &["a"]),
-        form(3, 4, &[1, 2, 3, 6], &["a"]),
-    ];
-    let clique_findings = compare(&clique, 0.5);
-    assert_eq!(clique_findings.len(), 1);
-    assert_eq!(clique_findings[0].members.len(), 3);
-    assert_eq!(
-        clique_findings[0].clone_type,
-        crate::domain::CloneType::Type3
-    );
+fn assert_type3_group(
+    forms: &[NormalizedForm],
+    threshold: f64,
+    member_count: usize,
+    expected_score: f64,
+) {
+    let findings = compare(forms, threshold);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), member_count);
+    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type3);
+    assert!((findings[0].score - expected_score).abs() < f64::EPSILON);
+}
 
-    let chain = [
-        form(1, 4, &[1, 2, 3, 4], &["a"]),
-        form(2, 4, &[1, 2, 3, 5], &["a"]),
-        form(3, 4, &[2, 3, 5, 6], &["a"]),
-    ];
-    let chain_findings = compare(&chain, 0.5);
-    assert_eq!(chain_findings.len(), 1);
-    assert_eq!(chain_findings[0].members.len(), 3);
-    assert_eq!(
-        chain_findings[0].clone_type,
-        crate::domain::CloneType::Type3
+#[test]
+fn near_miss_clusters_clique_and_splits_chain() {
+    // Clique: all pairs near-miss → one 3-member finding.
+    // Chain: A~B and B~C only (A~C below threshold) → exclusive pair.
+    assert_type3_group(
+        &[
+            form(1, 4, &[1, 2, 3, 4], &["a"]),
+            form(2, 4, &[1, 2, 3, 5], &["a"]),
+            form(3, 4, &[1, 2, 3, 6], &["a"]),
+        ],
+        0.5,
+        3,
+        0.6,
     );
+    assert_type3_group(
+        &[
+            form(1, 4, &[1, 2, 3, 4], &["a"]),
+            form(2, 4, &[1, 2, 3, 5], &["a"]),
+            form(3, 4, &[2, 3, 5, 6], &["a"]),
+        ],
+        0.5,
+        2,
+        0.6,
+    );
+}
+
+#[test]
+fn near_miss_chain_does_not_inflate_auto_refactor_tier() {
+    // Neighbor edges ≥ 0.95, but A–C is weaker; score must be min pairwise.
+    let a_fps: Vec<u64> = (0..40).collect();
+    let mut b_fps: Vec<u64> = (1..40).collect();
+    b_fps.push(40);
+    let mut c_fps: Vec<u64> = (2..40).collect();
+    c_fps.extend([40, 41]);
+    let forms = [
+        form(1, 40, &a_fps, &["a"]),
+        form(2, 40, &b_fps, &["a"]),
+        form(3, 40, &c_fps, &["a"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), 3);
+    assert!(findings[0].score < AUTO_REFACTOR_FLOOR);
+    assert!(findings[0].score >= REVIEW_FIRST_FLOOR);
+    assert_eq!(findings[0].tier, crate::domain::Tier::ReviewFirst);
+    assert!(findings[0].score >= 0.85);
 }
 
 #[test]
