@@ -7,7 +7,7 @@ fn bin() -> Command {
 }
 
 #[test]
-fn binary_help_and_analyze() {
+fn binary_help_prints_usage() {
     let help = bin().arg("--help").output();
     assert!(help.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
@@ -15,7 +15,10 @@ fn binary_help_and_analyze() {
     assert!(help.status.success());
     let stdout = String::from_utf8_lossy(&help.stdout);
     assert!(stdout.starts_with("dry-ts [PATH]..."));
+}
 
+#[test]
+fn binary_analyzes_non_clone_fixture() {
     let fixture =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/non_clone");
     let run = bin().arg(&fixture).args(["--format", "text", "--no-fail-on-findings"]).output();

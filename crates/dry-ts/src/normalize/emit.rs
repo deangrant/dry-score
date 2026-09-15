@@ -5,7 +5,11 @@ use tree_sitter::Node;
 
 /// Emits a normalized tree for `node` and its significant children.
 #[must_use]
-pub fn emit_node(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMap) -> NormNode {
+pub(super) fn emit_node(
+    node: Node<'_>,
+    source: &[u8],
+    placeholders: &mut PlaceholderMap,
+) -> NormNode {
     // dry-rs:ignore. Tree-sitter adapter parallel with dry-go; intentional.
     if should_skip(node) {
         return NormNode::leaf("skip");

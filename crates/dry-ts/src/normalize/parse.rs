@@ -13,7 +13,7 @@ thread_local! {
 
 /// Parsed TypeScript CST plus whether the root reported a recoverable error.
 #[derive(Debug)]
-pub struct ParseResult {
+pub(super) struct ParseResult {
     /// Syntax tree (may contain `ERROR` / missing nodes).
     pub tree: Tree,
     /// True when Tree-sitter marked the root with `has_error`.
@@ -29,7 +29,7 @@ pub struct ParseResult {
 ///
 /// Returns [`NormalizeError`] when the grammar cannot load or parse returns no
 /// tree.
-pub fn parse_source(path: &Path, source: &str) -> Result<ParseResult, NormalizeError> {
+pub(super) fn parse_source(path: &Path, source: &str) -> Result<ParseResult, NormalizeError> {
     if is_tsx_path(path) {
         parse_with(&TSX_PARSER, source, GrammarKind::Tsx)
     } else {
@@ -37,7 +37,7 @@ pub fn parse_source(path: &Path, source: &str) -> Result<ParseResult, NormalizeE
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 enum GrammarKind {
     Typescript,
     Tsx,

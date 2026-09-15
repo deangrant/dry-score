@@ -20,6 +20,7 @@ pub(super) fn method_name(
 }
 
 pub(super) fn anonymous_name(parent_name: Option<&str>, kind: &str, node: Node<'_>) -> String {
+    // dry-rs:ignore. Tree-sitter adapter parallel with dry-go; intentional.
     let line = u32::try_from(node.start_position().row.saturating_add(1)).unwrap_or(u32::MAX);
     parent_name.map_or_else(
         || format!("{kind}:L{line}"),
@@ -40,10 +41,4 @@ pub(super) fn named_or_anonymous(
         return parent.to_owned();
     }
     anonymous_name(None, kind, node)
-}
-
-/// Arrow bodies may be a `statement_block` or a bare expression.
-pub(super) fn statement_body(node: Node<'_>) -> Option<Node<'_>> {
-    let body = node.child_by_field_name("body")?;
-    Some(body)
 }

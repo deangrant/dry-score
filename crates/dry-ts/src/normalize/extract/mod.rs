@@ -19,7 +19,7 @@ use forms::{
 };
 
 /// Walks a parsed file and emits size-filtered forms.
-pub fn extract_forms(
+pub(super) fn extract_forms(
     root: Node<'_>,
     path: &Path,
     source_bytes: &[u8],

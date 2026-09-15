@@ -19,8 +19,7 @@ use dry_core::{FormKind, LanguageNormalizer, NormalizeError, NormalizeOutcome, f
 
 use extract::extract_forms;
 use parse::parse_source;
-
-const MARKER: &str = "dry-ts:ignore";
+use suppress::MARKER;
 
 /// TypeScript source normalizer backed by Tree-sitter.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

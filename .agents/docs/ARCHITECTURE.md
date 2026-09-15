@@ -216,7 +216,7 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Runner | [`runner.rs`](../../crates/dry-go/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
 | Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; soft `has_error` + partial CST |
-| Extract | [`normalize/extract.rs`](../../crates/dry-go/src/normalize/extract.rs) | Funcs, methods, `func_literal` |
+| Extract | [`normalize/extract/`](../../crates/dry-go/src/normalize/extract/) | Funcs, methods, `func_literal` |
 | Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode` |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` |
 

@@ -2,9 +2,7 @@
 
 use tree_sitter::Node;
 
-use super::names::{
-    anonymous_name, function_name, method_name, named_or_anonymous, statement_body,
-};
+use super::names::{anonymous_name, function_name, method_name, named_or_anonymous};
 use super::{ExtractCtx, push_form, walk_children};
 
 pub(super) fn try_walk_function(node: Node<'_>, ctx: &mut ExtractCtx<'_>) -> bool {
@@ -91,7 +89,7 @@ fn maybe_emit_method(node: Node<'_>, class_name: Option<&str>, ctx: &mut Extract
 }
 
 fn maybe_emit_arrow(node: Node<'_>, parent_name: Option<&str>, ctx: &mut ExtractCtx<'_>) {
-    if let Some(body) = statement_body(node) {
+    if let Some(body) = node.child_by_field_name("body") {
         let name = parent_name.map_or_else(|| anonymous_name(None, "$arrow", node), str::to_owned);
         push_form(body, &name, ctx);
     }
