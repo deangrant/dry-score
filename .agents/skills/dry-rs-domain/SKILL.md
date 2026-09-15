@@ -77,7 +77,9 @@ discover files → parse/normalize → fingerprint index → match → report
   a warning), matching Rust `syn` parse failure.
 - Full verify includes dry-go dogfood under
   [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/) and dry-ts
-  dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/).
+  dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/)
+  (smoke/`findings=0` on tiny non-clone trees—not broad language corpora;
+  fixtures + `dry-core` tests cover clone semantics).
 
 ## Suppressions
 

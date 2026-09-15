@@ -283,6 +283,7 @@ flowchart TB
 | Adapters implement `LanguageNormalizer`; scoring stays in `dry-core` | Do not fork Jaccard or tier rules in an adapter |
 | Fingerprints are toolchain-stable and location-independent | Do not bake spans or absolute paths into hashes |
 | Digests are 64-bit FNV-1a | Birthday collisions are theoretically possible (rare false similarity); accepted for local analysis |
+| Recursive emit / `hash_node` may stack-overflow on pathological depth | Unlikely for normal sources under `max_file_bytes`; accepted residual (same class as FNV birthday risk) |
 | `emit/shared` must not import `expr` | Avoids a shared↔expr cycle; recursive wraps live in `expr/wrap` |
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
 | Symlink analysis roots are rejected | Avoids silent empty runs when the root itself is a link |
@@ -329,8 +330,11 @@ For a faster loop (fmt, Clippy, test only):
 
 The dry-go gate scans [`crates/dry-go/dogfood/`](../../crates/dry-go/dogfood/)
 and the dry-ts gate scans [`crates/dry-ts/dogfood/`](../../crates/dry-ts/dogfood/)
-(unique non-clone corpora) because production Go / TypeScript sources outside
-fixtures are absent from this repo.
+(tiny unique non-clone corpora) because this repo has no production Go /
+TypeScript sources outside fixtures. Dogfood proves the binary can scan a clean
+tree with `findings=0`; it is **not** a broad language corpus. Clone detection
+semantics are covered by each adapter’s `fixtures_integration` tests plus
+`dry-core` compare unit tests (exact / near-miss / clustering).
 Detail: [verify-gates](../skills/verify-gates/SKILL.md), or run `/verify`.
 
 Agent support lives under `.agents/`:

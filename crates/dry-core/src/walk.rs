@@ -175,7 +175,7 @@ fn has_extension(path: &Path, extensions: &[String]) -> bool {
         return false;
     };
     let ext = ext.to_string_lossy();
-    extensions.iter().any(|wanted| wanted == ext.as_ref())
+    extensions.iter().any(|wanted| wanted.eq_ignore_ascii_case(ext.as_ref()))
 }
 
 #[cfg(test)]
@@ -241,6 +241,8 @@ mod tests {
     fn has_extension_requires_suffix() {
         assert!(!has_extension(Path::new("Makefile"), &["rs".to_owned()]));
         assert!(has_extension(Path::new("lib.rs"), &["rs".to_owned()]));
+        assert!(has_extension(Path::new("lib.RS"), &["rs".to_owned()]));
+        assert!(has_extension(Path::new("Lib.Rs"), &["RS".to_owned()]));
     }
 
     #[test]

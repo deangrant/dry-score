@@ -210,8 +210,9 @@ cargo build --release -p dry-go
 `// dry-go:ignore` / `// dry-go:ignore-file`. Parsing uses Tree-sitter (C
 grammar at build time); syntax errors discard the file’s forms and surface as
 analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
-dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter
-itself is Rust.
+dogfood scan [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/) (tiny unique
+non-clone smoke tree; clone types are covered by fixtures, not dogfood breadth).
+The adapter itself is Rust.
 
 ### TypeScript (`dry-ts`)
 
@@ -225,8 +226,9 @@ cargo build --release -p dry-ts
 Suppress with full-line `// dry-ts:ignore` / `// dry-ts:ignore-file`. Parsing
 uses Tree-sitter TypeScript / TSX grammars; syntax errors discard the file’s
 forms and surface as analyze warnings (same fail-closed contract as `dry-rs`).
-Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/).
-The adapter itself is Rust.
+Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/)
+(tiny unique non-clone smoke tree; clone types are covered by fixtures, not
+dogfood breadth). The adapter itself is Rust.
 
 ## License
 
