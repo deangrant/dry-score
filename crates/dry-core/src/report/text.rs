@@ -23,7 +23,7 @@ fn write_header(out: &mut String, report: &Report) {
     );
     let _ = writeln!(
         out,
-        "files={} forms={} findings={} warnings={}\n",
+        "scanned={} forms={} findings={} warnings={}\n",
         report.summary.files_scanned,
         report.summary.forms_compared,
         report.summary.total_findings(),

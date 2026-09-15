@@ -127,6 +127,11 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 When the configured threshold is ≥ 0.85, emitted findings do not use the
 advisory band.
 
+Text report banners use `scanned=` for `summary.files_scanned` (files that
+returned `Ok` from normalize). Size skips, I/O failures, and parse errors are
+not counted there; they appear under `warnings=` / the warnings section. JSON
+still uses the field name `files_scanned`.
+
 Deep module maps and invariants:
 [`.agents/docs/ARCHITECTURE.md`](.agents/docs/ARCHITECTURE.md).
 

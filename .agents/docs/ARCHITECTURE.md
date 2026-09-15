@@ -176,6 +176,15 @@ JSON reports serialize fingerprints as a map from hash string/number to count
 When the configured threshold is ≥ 0.85, emitted findings do not use the
 advisory band. Detail: [dry-rs-domain](../skills/dry-rs-domain/SKILL.md).
 
+### Report summary counters
+
+`summary.files_scanned` (text banner `scanned=`) counts files that returned
+`Ok` from normalize, including ignore-file suppressions and files with no
+qualifying forms. Size skips, I/O failures, and parse errors are **not**
+included; they contribute to `parse_warnings` / the warnings list instead.
+`parse_warnings` is a warning-message count (including soft adapter warnings
+on successful scans), not a discovery-file counter.
+
 ## `dry-core` module map
 
 Barrel: [`crates/dry-core/src/lib.rs`](../../crates/dry-core/src/lib.rs).
@@ -281,6 +290,7 @@ flowchart TB
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
 | Workspace members are `dry-core`, `dry-rs`, `dry-go`, and `dry-ts` | Update this document if you add or rename crates |
+| Clippy-driven CC-split dispatch shells with full-line `// dry-*:ignore` are Keep-as-is | Do not re-merge `try_emit_*` / one-flag CLI / adapter-parallel shells solely to reduce ignore noise; see [dry-dogfood](../skills/dry-dogfood/SKILL.md) and [design-scan](../commands/design-scan.md) |
 
 ## Exit codes
 
