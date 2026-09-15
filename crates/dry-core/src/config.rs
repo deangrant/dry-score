@@ -14,7 +14,7 @@ pub enum OutputFormat {
     Text,
     /// JSON envelope.
     Json,
-    /// Both text and JSON (text on stdout, JSON on stderr path via runner).
+    /// Both text and JSON (text on stdout; JSON written to `--json-out`).
     Both,
 }
 

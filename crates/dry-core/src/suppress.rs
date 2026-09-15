@@ -4,11 +4,21 @@
 //! whitespace): `//`, `///`, `//!`, `#`, or a whole-line `/* … */` / `/** … */`.
 //! Trailing comments and string/URL substrings do not count.
 
+/// Number of leading source lines scanned for `{marker}-file` directives.
+pub const FILE_IGNORE_SCAN_LINES: usize = 40;
+
 /// Returns true when the file opts out via `{marker}-file`.
+///
+/// Only the first [`FILE_IGNORE_SCAN_LINES`] lines are searched so long
+/// license/header blocks do not hide a late file-level directive by accident;
+/// place `*-ignore-file` near the top of the file.
 #[must_use]
 pub fn file_is_ignored(source: &str, marker: &str) -> bool {
     let file_marker = format!("{marker}-file");
-    source.lines().take(40).any(|line| directive_matches(line, &file_marker))
+    source
+        .lines()
+        .take(FILE_IGNORE_SCAN_LINES)
+        .any(|line| directive_matches(line, &file_marker))
 }
 
 /// Returns true when any line in `[start_line, end_line]` opts out via `marker`.
@@ -162,5 +172,27 @@ mod tests {
     fn rejects_hash_comment_false_positives() {
         assert!(!span_is_ignored("code  # dry-rs:ignore\n", 1, 1, MARKER));
         assert!(!span_is_ignored("s = \"# dry-rs:ignore\"\n", 1, 1, MARKER));
+    }
+
+    #[test]
+    fn file_ignore_marker_beyond_scan_window_is_ignored() {
+        use std::fmt::Write as _;
+        let mut src = String::new();
+        for i in 1..=FILE_IGNORE_SCAN_LINES {
+            let _ = writeln!(src, "// preamble {i}");
+        }
+        src.push_str("// dry-rs:ignore-file\nfn a() {}\n");
+        assert!(!file_is_ignored(&src, MARKER));
+    }
+
+    #[test]
+    fn file_ignore_marker_on_last_scanned_line_is_honored() {
+        use std::fmt::Write as _;
+        let mut src = String::new();
+        for i in 1..FILE_IGNORE_SCAN_LINES {
+            let _ = writeln!(src, "// preamble {i}");
+        }
+        src.push_str("// dry-rs:ignore-file\nfn a() {}\n");
+        assert!(file_is_ignored(&src, MARKER));
     }
 }

@@ -153,7 +153,7 @@ Use a **full-line** comment directive (optional leading whitespace): `//`,
 substrings do not count.
 
 - Span: `// dry-rs:ignore` or `// dry-rs:ignore. reason`
-- File: `// dry-rs:ignore-file` near the top of the file
+- File: `// dry-rs:ignore-file` within the first 40 lines of the file
 - Doc/block forms (`///`, `//!`, `/* … */`) are also recognized
 
 ## Exit codes

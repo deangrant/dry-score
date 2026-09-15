@@ -210,13 +210,12 @@ fn differing_multiplicity_is_not_exact_match() {
 fn scored_near_miss_rejects_exact_and_out_of_window() {
     let twin = form(1, 5, &[1, 2, 3, 4, 5], &["a"]);
     let same = form(2, 5, &[1, 2, 3, 4, 5], &["b"]);
-    let claimed = BTreeSet::new();
-    assert!(scored_near_miss(&twin, &same, &claimed, 0.5).is_none());
+    assert!(scored_near_miss(&twin, &same, 0.5).is_none());
     // Set sizes 2 vs 20 fall outside a 0.9 Jaccard upper bound.
     let small = form(3, 100, &[1, 2], &["a"]);
     let large_fps: Vec<u64> = (1..=20).collect();
     let large = form(4, 10, &large_fps, &["a"]);
-    assert!(scored_near_miss(&small, &large, &claimed, 0.9).is_none());
+    assert!(scored_near_miss(&small, &large, 0.9).is_none());
 }
 
 #[test]
