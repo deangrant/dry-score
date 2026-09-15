@@ -8,6 +8,7 @@ fail_on_findings = false
 
 [output]
 # text | json | both
+# `both` also requires CLI `--json-out PATH` (JSON is not written to stderr).
 format = "text"
 
 [walk]

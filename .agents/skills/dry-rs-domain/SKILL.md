@@ -41,8 +41,9 @@ discover files → parse/normalize → fingerprint index → match → report
   test-only helpers under those conventions so they do not pair with production.
 - Nested extractable units (`closure` / `func_literal` / arrows) are **stubbed**
   in parent body fingerprints; nested forms still fingerprint their own bodies.
-- Allowlisted macros expand to normalized expr children (`macro_expand:…`);
-  others keep token-tree emission.
+- Allowlisted macros expand to normalized expr children (`macro_expand:…`) when
+  the path is bare or rooted at `std`/`core`/`alloc`; others keep token-tree
+  emission.
 - Emit helpers: recursive expr wrappers live under `normalize/emit/expr/`;
   [`shared.rs`](../../../crates/dry-rs/src/normalize/emit/shared.rs) stays pure
   (must not import `expr`).

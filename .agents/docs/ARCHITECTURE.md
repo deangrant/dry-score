@@ -216,7 +216,7 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Runner | [`runner.rs`](../../crates/dry-rs/src/runner.rs) | Thin Rust wrapper around `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-rs/src/normalize/mod.rs) | `RustNormalizer` / `LanguageNormalizer` |
 | Extract | [`normalize/extract/`](../../crates/dry-rs/src/normalize/extract/) | Named forms from items, impls, trait defaults, and closures (`$closure:L{line}`) |
-| Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand to expr children; others keep token-tree shape |
+| Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand when bare or `std`/`core`/`alloc`; others keep token-tree shape |
 | Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission; nested closures stubbed as leaf in parent bags |
 | Expr wrap | [`normalize/emit/expr/wrap.rs`](../../crates/dry-rs/src/normalize/emit/expr/wrap.rs) | Recursive emit helpers (optional, unary, block, pair, range) |
 | Shared emit | [`normalize/emit/shared.rs`](../../crates/dry-rs/src/normalize/emit/shared.rs) | Pure helpers only (must not import `expr`) |
@@ -304,8 +304,13 @@ flowchart TB
 
 `dry-rs` is a local analysis tool. The binary does not open network sockets or
 execute untrusted code. The walker does not follow file or directory symlinks,
-and rejects a symlink as an analysis root. Residual risk is local filesystem
-read under the chosen roots—not remote code execution.
+and rejects a symlink as an analysis root. Symlink refusal is best-effort on a
+**stable** tree: concurrent replacement of a discovered path between walk and
+`read_to_string` (TOCTOU) is out of scope for the local trusted-operator model.
+`--json-out` writes or overwrites any user-supplied path and is not confined to
+analysis roots (same pattern as typical report CLIs). Residual risk is local
+filesystem read/write under the operator's credentials—not remote code
+execution.
 
 ## Verification and agent layout
 

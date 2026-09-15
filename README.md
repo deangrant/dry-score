@@ -58,12 +58,14 @@ If you omit `PATH`, dry-rs analyzes `.`.
 | `--exclude NAME[,NAME]...` | Replace `walk.exclude` (comma-separated directory names) |
 | `--fail-on-findings` | Exit `1` when any finding is reported |
 | `--no-fail-on-findings` | Do not fail the process on findings (overrides config) |
-| `--json-out PATH` | When `--format both`, write JSON to this path |
+| `--json-out PATH` | Required when format is `both`: write JSON here (overwrites if present) |
 | `--help`, `-h` | Print help and exit `0` |
 
 Walk-up discovery loads `dry.toml` from the current directory or a parent unless
 you pass `--config`. Analysis roots are trusted local trees; the walker does
-**not** follow symlinks, and a symlink root is an error.
+**not** follow symlinks, and a symlink root is an error. Concurrent path
+replacement during a scan is outside the trust model. `--json-out` may target
+any writable path and overwrites existing files.
 
 ## Configuration
 
@@ -97,8 +99,9 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 - Literals become kind tags (`lit_int`, `lit_str`, …).
 - Control flow, operators, and patterns keep structural labels.
 - Macros: an allowlist (`vec`, `assert*`, `format`, `print*`/`eprint*`, `dbg`,
-  `matches`, …) expands to normalized expression children; other macros keep
-  name + delimiter + token-tree shape.
+  `matches`, …) expands to normalized expression children when the path is bare
+  or rooted at `std`/`core`/`alloc`; other macros (including custom
+  `crate::assert_eq!`) keep name + delimiter + token-tree shape.
 - Closures are extracted as named forms (`{parent}.$closure:L{line}`), in
   addition to remaining embedded in the parent body.
 - Each subtree hashes to a `u64` (fixed FNV-1a); the bag of those hashes

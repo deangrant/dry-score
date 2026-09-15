@@ -9,8 +9,9 @@
 //! - Literals become kind tags (`lit_int`, `lit_str`, …).
 //! - Control-flow and operator nodes keep their structural labels.
 //! - Patterns emit structural nodes (or/range/slice/ref/…), not a catch-all.
-//! - Macros: allowlisted invocations expand to normalized expr children;
-//!   others fingerprint as name + delimiter + token-tree structure.
+//! - Macros: allowlisted invocations expand to normalized expr children when
+//!   the path is bare or rooted at `std`/`core`/`alloc`; others fingerprint as
+//!   name + delimiter + token-tree structure.
 //! - Trait default method bodies are extracted as named forms.
 //! - Each subtree hashes to a `u64` via fixed FNV-1a; subtree hashes form a
 //!   fingerprint bag (hash → multiplicity).
