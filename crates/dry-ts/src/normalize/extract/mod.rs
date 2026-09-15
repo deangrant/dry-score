@@ -61,18 +61,33 @@ pub(super) fn walk_forms(
     ctx: &mut ExtractCtx<'_>,
 ) {
     // dry-rs:ignore. CC-driven CST kind dispatch; parallel shape is intentional.
-    if try_walk_function(node, ctx)
-        || try_walk_generator(node, ctx)
-        || try_walk_method(node, class_name, ctx)
-    {
+    if try_walk_named_forms(node, class_name, ctx) {
         return;
     }
-    if try_walk_arrow(node, parent_name, ctx)
-        || try_walk_function_expression(node, parent_name, ctx)
-    {
+    if try_walk_expr_forms(node, parent_name, ctx) {
         return;
     }
     walk_children(node, parent_name, class_name, ctx);
+}
+
+fn try_walk_named_forms(
+    node: Node<'_>,
+    class_name: Option<&str>,
+    ctx: &mut ExtractCtx<'_>,
+) -> bool {
+    // dry-rs:ignore. CC-driven CST walk helpers; parallel shape is intentional.
+    try_walk_function(node, ctx)
+        || try_walk_generator(node, ctx)
+        || try_walk_method(node, class_name, ctx)
+}
+
+fn try_walk_expr_forms(
+    node: Node<'_>,
+    parent_name: Option<&str>,
+    ctx: &mut ExtractCtx<'_>,
+) -> bool {
+    // dry-rs:ignore. CC-driven CST walk helpers; parallel shape is intentional.
+    try_walk_arrow(node, parent_name, ctx) || try_walk_function_expression(node, parent_name, ctx)
 }
 
 /// Walks named children, propagating binding / class context from `node`.
