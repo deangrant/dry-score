@@ -3,10 +3,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use rayon::prelude::*;
+
 use crate::compare::compare;
 use crate::config::Config;
 use crate::domain::{CloneType, Finding, NormalizedForm, ReportSummary, Tier};
-use crate::ports::LanguageNormalizer;
+use crate::ports::{LanguageNormalizer, NormalizeOutcome};
 use crate::report::Report;
 use crate::walk::{WalkOptions, collect_source_files};
 
@@ -19,19 +21,25 @@ pub struct AnalysisResult {
 
 /// Runs discovery, normalization, comparison, and summary building.
 ///
+/// Roots are absolutized once so walk paths and `strip_prefix` share `PathKind`,
+/// keeping report member paths root-relative across machines. Files normalize
+/// in parallel; form IDs and warnings merge in walk order for determinism.
+///
 /// # Errors
 ///
-/// Returns a string when filesystem discovery fails hard.
+/// Returns a string when filesystem discovery fails hard or a root cannot be
+/// absolutized.
 pub fn analyze(
     roots: &[PathBuf],
     config: &Config,
     normalizer: &impl LanguageNormalizer,
     tool: &str,
 ) -> Result<AnalysisResult, String> {
+    let roots = absolutize_roots(roots)?;
     let options = WalkOptions::new(config.walk.extensions.clone(), config.walk.exclude.clone());
-    let files = collect_source_files(roots, &options).map_err(|err| err.to_string())?;
+    let files = collect_source_files(&roots, &options).map_err(|err| err.to_string())?;
     let (forms, warnings, files_scanned) =
-        normalize_sources(&files, roots, normalizer, config.walk.max_file_bytes);
+        normalize_sources(&files, &roots, normalizer, config.walk.max_file_bytes);
     let forms_compared = u32::try_from(forms.len()).unwrap_or(u32::MAX);
     let findings = compare(&forms, config.gate.threshold);
     let summary = build_summary(
@@ -42,6 +50,13 @@ pub fn analyze(
     );
     let report = Report::new(tool, config.gate.threshold, findings, summary, warnings);
     Ok(AnalysisResult { report })
+}
+
+fn absolutize_roots(roots: &[PathBuf]) -> Result<Vec<PathBuf>, String> {
+    roots
+        .iter()
+        .map(|root| std::path::absolute(root).map_err(|err| format!("{}: {err}", root.display())))
+        .collect()
 }
 
 /// Prefer root-relative paths for report stability; keep the original when no
@@ -58,79 +73,103 @@ fn relativize_one(path: &Path, roots: &[PathBuf]) -> PathBuf {
         .map_or_else(|| path.to_path_buf(), |(_, rel)| rel)
 }
 
+/// Per-file normalize result before ordered merge.
+struct FileNormalizeResult {
+    forms: Vec<NormalizedForm>,
+    warnings: Vec<String>,
+    scanned: bool,
+}
+
 fn normalize_sources(
     files: &[PathBuf],
     roots: &[PathBuf],
     normalizer: &impl LanguageNormalizer,
     max_file_bytes: u64,
 ) -> (Vec<NormalizedForm>, Vec<String>, u32) {
-    let mut forms = Vec::new();
-    let mut warnings = Vec::new();
-    let mut next_id = 1_u64;
-    let mut files_scanned = 0_u32;
-    let mut state = NormalizeState {
-        next_id: &mut next_id,
-        forms: &mut forms,
-        warnings: &mut warnings,
-        files_scanned: &mut files_scanned,
-    };
-    for path in files {
-        let report_path = relativize_one(path, roots);
-        normalize_one(path, &report_path, normalizer, max_file_bytes, &mut state);
-    }
-    (forms, warnings, files_scanned)
+    let per_file: Vec<FileNormalizeResult> = files
+        .par_iter()
+        .map(|path| {
+            let report_path = relativize_one(path, roots);
+            normalize_file_local(path, &report_path, normalizer, max_file_bytes)
+        })
+        .collect();
+    merge_normalize_results(per_file)
 }
 
-struct NormalizeState<'a> {
-    next_id: &'a mut u64,
-    forms: &'a mut Vec<NormalizedForm>,
-    warnings: &'a mut Vec<String>,
-    files_scanned: &'a mut u32,
-}
-
-fn normalize_one(
+fn normalize_file_local(
     path: &Path,
     report_path: &Path,
     normalizer: &impl LanguageNormalizer,
     max_file_bytes: u64,
-    state: &mut NormalizeState<'_>,
-) {
+) -> FileNormalizeResult {
     if let Err(warning) = check_file_size(path, report_path, max_file_bytes) {
-        state.warnings.push(warning);
-        return;
+        return FileNormalizeResult {
+            forms: Vec::new(),
+            warnings: vec![warning],
+            scanned: false,
+        };
     }
     let source = match fs::read_to_string(path) {
         Ok(source) => source,
         Err(err) => {
-            state.warnings.push(format!("{}: {err}", report_path.display()));
-            return;
+            return FileNormalizeResult {
+                forms: Vec::new(),
+                warnings: vec![format!("{}: {err}", report_path.display())],
+                scanned: false,
+            };
         }
     };
-    apply_normalize_outcome(report_path, normalizer, &source, state);
+    apply_normalize_local(report_path, normalizer, &source)
 }
 
-fn apply_normalize_outcome(
+fn apply_normalize_local(
     report_path: &Path,
     normalizer: &impl LanguageNormalizer,
     source: &str,
-    state: &mut NormalizeState<'_>,
-) {
-    match normalizer.normalize_file(report_path, source, state.next_id) {
-        Ok(outcome) => record_normalize_ok(report_path, outcome, state),
-        Err(err) => state.warnings.push(format!("{}: {err}", report_path.display())),
+) -> FileNormalizeResult {
+    let mut local_id = 1_u64;
+    match normalizer.normalize_file(report_path, source, &mut local_id) {
+        Ok(outcome) => record_ok_local(report_path, outcome),
+        Err(err) => FileNormalizeResult {
+            forms: Vec::new(),
+            warnings: vec![format!("{}: {err}", report_path.display())],
+            scanned: false,
+        },
     }
 }
 
-fn record_normalize_ok(
-    report_path: &Path,
-    outcome: crate::ports::NormalizeOutcome,
-    state: &mut NormalizeState<'_>,
-) {
-    *state.files_scanned = state.files_scanned.saturating_add(1);
-    for warning in outcome.warnings {
-        state.warnings.push(format!("{}: {warning}", report_path.display()));
+fn record_ok_local(report_path: &Path, outcome: NormalizeOutcome) -> FileNormalizeResult {
+    let warnings = outcome
+        .warnings
+        .into_iter()
+        .map(|warning| format!("{}: {warning}", report_path.display()))
+        .collect();
+    FileNormalizeResult {
+        forms: outcome.forms,
+        warnings,
+        scanned: true,
     }
-    state.forms.extend(outcome.forms);
+}
+
+fn merge_normalize_results(
+    per_file: Vec<FileNormalizeResult>,
+) -> (Vec<NormalizedForm>, Vec<String>, u32) {
+    let mut forms = Vec::new();
+    let mut warnings = Vec::new();
+    let mut next_id = 1_u64;
+    let mut files_scanned = 0_u32;
+    for result in per_file {
+        if result.scanned {
+            files_scanned = files_scanned.saturating_add(1);
+        }
+        warnings.extend(result.warnings);
+        for mut form in result.forms {
+            form.id = next_id;
+            next_id = next_id.saturating_add(1);
+            forms.push(form);
+        }
+    }
+    (forms, warnings, files_scanned)
 }
 
 fn check_file_size(path: &Path, report_path: &Path, max_file_bytes: u64) -> Result<(), String> {

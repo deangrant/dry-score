@@ -114,13 +114,15 @@ A `dry-rs` run proceeds as follows:
 2. Build [`RustNormalizer`](../../crates/dry-rs/src/normalize/mod.rs) from
    `walk.min_nodes` and `walk.min_lines`.
 3. Call [`analyze`](../../crates/dry-core/src/analyze.rs):
-   1. Collect sources with
+   1. Absolutize roots once (shared PathKind for walk + relativize).
+   2. Collect sources with
       [`walk::collect_source_files`](../../crates/dry-core/src/walk.rs).
-   2. Normalize each file (skip files over `walk.max_file_bytes` with a
+   3. Normalize files in parallel (skip files over `walk.max_file_bytes` with a
       warning; warn on unreadable paths; emit no forms when the file opts out).
-   3. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
+      Form IDs and warnings merge in walk order for deterministic compare.
+   4. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
       `gate.threshold`.
-   4. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
+   5. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
 4. Emit text and/or JSON. Map `fail_on_findings` to the process exit code.
       JSON serialize failure fails the run (exit 2); there is no alternate
       error-object schema.
@@ -152,6 +154,14 @@ Jaccard among members; components that are not threshold-closed split into
 exclusive pairs; window uses total bag size `Σ` counts). Production and test
 forms (`FormKind`) never pair. Findings sort most exact to least exact.
 
+`FormKind` is language-idiomatic: Rust uses `#[test]` / `#[cfg(test)]` (and
+enclosing cfg); Go uses the `*_test.go` filename suffix only; TypeScript uses
+`.test.` / `.spec.` filename markers or a `__tests__` path component. Importable
+shared harness packages (for example Go `internal/testutil` in ordinary `.go`
+files) stay `Production` by design so clones against real production code remain
+visible—put test-only helpers in `*_test.go` (or TS test paths) to exclude them
+from production pairing.
+
 JSON reports serialize fingerprints as a map from hash string/number to count
 (BREAKING versus the former unique-hash set).
 
@@ -173,10 +183,10 @@ Pipeline entry: [`analyze`](../../crates/dry-core/src/analyze.rs).
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
-| Orchestration | [`analyze.rs`](../../crates/dry-core/src/analyze.rs) | Walk → normalize → compare → summary → `Report` |
+| Orchestration | [`analyze.rs`](../../crates/dry-core/src/analyze.rs) | Absolutize roots → walk → parallel normalize (ordered merge) → compare → summary → `Report` |
 | Walk | [`walk.rs`](../../crates/dry-core/src/walk.rs) | Recursive discovery; no symlink follow; symlink roots error; exclude by path component |
 | Config | [`config.rs`](../../crates/dry-core/src/config.rs) | TOML load, walk-up discover, threshold validate, `OutputFormat` |
-| Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer`, `NormalizeOutcome`, `NormalizeError` |
+| Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer: Sync`, `NormalizeOutcome`, `NormalizeError` |
 | Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss components, sort |
 | Near-miss index | [`compare/near_miss.rs`](../../crates/dry-core/src/compare/near_miss.rs) | DF-ordered Jaccard prefix candidate generation |
 | Jaccard | [`compare/jaccard.rs`](../../crates/dry-core/src/compare/jaccard.rs) | Multiset similarity (`Σ min / Σ max`) |
@@ -218,7 +228,7 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Runner | [`runner.rs`](../../crates/dry-go/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
 | Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; `has_error` fails closed (no forms) |
-| Extract | [`normalize/extract/`](../../crates/dry-go/src/normalize/extract/) | Funcs, methods, `func_literal` |
+| Extract | [`normalize/extract/`](../../crates/dry-go/src/normalize/extract/) | Funcs, methods, `func_literal`; kind from `*_test.go` only |
 | Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode`; nested `func_literal` stubbed in parent bags |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` (`//`, `///`, `//!`, `/* */`) |
 

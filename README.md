@@ -111,7 +111,10 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
    near-miss multiset Jaccard (window on total bag size; DF-ordered occurrence
    prefix for candidates; score is the minimum pairwise Jaccard among members;
    non-threshold-closed components split into exclusive pairs).
-3. Production and test forms (`FormKind`) never pair.
+3. Production and test forms (`FormKind`) never pair. Kind is
+   language-idiomatic: Rust attrs/`cfg(test)`, Go `*_test.go` only, TypeScript
+   `.test.` / `.spec.` / `__tests__`. Importable harness packages outside those
+   conventions stay `Production` so prod clones remain visible.
 4. Findings sort most exact → least exact.
 
 ### Labels

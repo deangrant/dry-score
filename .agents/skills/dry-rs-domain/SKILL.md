@@ -36,6 +36,9 @@ discover files → parse/normalize → fingerprint index → match → report
 - Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
   test/cfg attrs (language-idiomatic vs Go `_test.go` vs TypeScript
   `.test.` / `.spec.` / `__tests__`).
+- Go/TS classify **only** by path convention: non-`*_test.go` (and non-TS test
+  paths) stay `Production`, including importable harness packages. Put
+  test-only helpers under those conventions so they do not pair with production.
 - Nested extractable units (`closure` / `func_literal` / arrows) are **stubbed**
   in parent body fingerprints; nested forms still fingerprint their own bodies.
 - Allowlisted macros expand to normalized expr children (`macro_expand:…`);

@@ -3,6 +3,7 @@
 use super::*;
 use crate::domain::{FormKind, FormSpan};
 use crate::ports::{NormalizeError, NormalizeOutcome};
+use crate::walk::{WalkOptions, collect_source_files};
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
@@ -95,6 +96,73 @@ fn analyze_emits_root_relative_form_paths() {
     assert_eq!(result.report.findings.len(), 1);
     assert!(result.report.findings[0].members.iter().all(|m| m.path.is_relative()));
     let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn analyze_relative_root_still_emits_relative_paths() {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let root = PathBuf::from(format!("target/dry-rs-analyze-relroot-{stamp}"));
+    assert!(fs::create_dir_all(&root).is_ok());
+    assert!(fs::write(root.join("a.rs"), "fn a() { let x = 1; }\n").is_ok());
+    assert!(fs::write(root.join("b.rs"), "fn b() { let y = 2; }\n").is_ok());
+    assert!(root.is_relative(), "fixture root must stay relative");
+    #[expect(clippy::expect_used, reason = "test asserts analyze ok")]
+    let result = analyze(
+        std::slice::from_ref(&root),
+        &Config::default(),
+        &StubNormalizer {
+            fail: false,
+            soft_warnings: Vec::new(),
+        },
+        "dry-core",
+    )
+    .expect("ok");
+    assert_eq!(result.report.findings.len(), 1);
+    assert!(
+        result.report.findings[0].members.iter().all(|m| m.path.is_relative()),
+        "members={:?}",
+        result.report.findings[0].members
+    );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn normalize_merge_assigns_ids_in_file_order() {
+    let (files, root) = two_file_fixture("ids");
+    let (forms, warnings, scanned) = normalize_sources(
+        &files,
+        std::slice::from_ref(&root),
+        &StubNormalizer {
+            fail: false,
+            soft_warnings: vec!["soft".to_owned()],
+        },
+        u64::MAX,
+    );
+    assert_eq!(scanned, 2);
+    assert_eq!(forms.iter().map(|f| f.id).collect::<Vec<_>>(), vec![1, 2]);
+    assert_eq!(warnings.len(), 2);
+    assert!(warnings[0].starts_with(&forms[0].path.display().to_string()));
+    assert!(warnings[1].starts_with(&forms[1].path.display().to_string()));
+    assert!(warnings.iter().all(|w| w.ends_with(": soft")));
+    let _ = fs::remove_dir_all(root);
+}
+
+fn two_file_fixture(label: &str) -> (Vec<PathBuf>, PathBuf) {
+    let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+    let root = std::env::temp_dir().join(format!("dry-rs-analyze-{label}-{stamp}"));
+    assert!(fs::create_dir_all(&root).is_ok());
+    assert!(fs::write(root.join("a.rs"), "fn a() { let x = 1; }\n").is_ok());
+    assert!(fs::write(root.join("b.rs"), "fn b() { let y = 2; }\n").is_ok());
+    #[expect(clippy::expect_used, reason = "test needs absolute root")]
+    let root = root.canonicalize().expect("canonicalize");
+    let files = collect_source_files(
+        std::slice::from_ref(&root),
+        &WalkOptions::new(vec!["rs".to_owned()], Vec::new()),
+    );
+    #[expect(clippy::expect_used, reason = "test asserts walk ok")]
+    let files = files.expect("walk");
+    assert_eq!(files.len(), 2);
+    (files, root)
 }
 
 #[test]
