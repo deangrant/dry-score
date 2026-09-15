@@ -109,9 +109,9 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
 
 1. Identical fingerprint bags score `1.0` (exact buckets).
 2. Remaining forms use an inverted fingerprint index and connected-component
-   near-miss multiset Jaccard (window on total bag size; score is the minimum
-   pairwise Jaccard among members; non-threshold-closed components split into
-   exclusive pairs).
+   near-miss multiset Jaccard (window on total bag size; DF-ordered occurrence
+   prefix for candidates; score is the minimum pairwise Jaccard among members;
+   non-threshold-closed components split into exclusive pairs).
 3. Production and test forms (`FormKind`) never pair.
 4. Findings sort most exact → least exact.
 

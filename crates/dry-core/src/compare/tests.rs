@@ -343,3 +343,54 @@ fn collect_near_miss_edges_skips_missing_index_postings() {
     let edges = collect_near_miss_edges(&remaining, 0.5);
     assert_eq!(edges.len(), 1);
 }
+
+fn form_counts(id: u64, nodes: u32, pairs: &[(u64, u32)], idents: &[&str]) -> NormalizedForm {
+    NormalizedForm {
+        id,
+        name: format!("f{id}"),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: nodes,
+        fingerprints: pairs.iter().copied().collect(),
+        ident_trace: idents.iter().map(|s| (*s).to_owned()).collect(),
+    }
+}
+
+#[test]
+fn near_miss_recall_when_overlap_is_mostly_common_leaf() {
+    // Multiset Jaccard ≈ 0.94 from a shared high-DF leaf plus small shared tail.
+    let forms = [
+        form_counts(1, 100, &[(1, 94), (10, 3), (11, 3)], &["a"]),
+        form_counts(2, 100, &[(1, 94), (10, 3), (12, 3)], &["a"]),
+        // Raises DF of leaf 1 without pairing against the near-miss twins.
+        form_counts(3, 100, &[(1, 10), (30, 45), (31, 45)], &["a"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), 2);
+    assert!(findings[0].score >= 0.85);
+    assert!(findings[0].score < 1.0);
+}
+
+#[test]
+fn prefix_filter_avoids_common_leaf_all_pairs_clique() {
+    // Many forms share only leaf 1; each has a unique rare key. Prefix mass is 1
+    // at threshold 0.85 for bag_size 2, so only the rare key is indexed/probed.
+    let mut forms = Vec::new();
+    for i in 0..40_u64 {
+        forms.push(form(i + 1, 2, &[1, 1000 + i], &["a"]));
+    }
+    let remaining: Vec<&NormalizedForm> = forms.iter().collect();
+    let df = fingerprint_df_for_test(&remaining);
+    for form in &forms {
+        let keys = prefix_keys(form, &df, 0.85);
+        let rare = form.fingerprints.keys().copied().filter(|&fp| fp != 1).collect::<Vec<_>>();
+        assert_eq!(rare.len(), 1);
+        assert_eq!(keys, rare);
+        assert!(!keys.contains(&1));
+    }
+    let edges = collect_near_miss_edges(&remaining, 0.85);
+    assert!(edges.is_empty());
+    assert!(compare(&forms, 0.85).is_empty());
+}

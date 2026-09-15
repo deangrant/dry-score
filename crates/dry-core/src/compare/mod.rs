@@ -1,7 +1,11 @@
 //! Comparison engine: exact buckets then inverted-index Jaccard near-miss.
+//!
+//! Near-miss candidates use a DF-ordered Jaccard occurrence prefix so common
+//! leaf digests do not dominate inverted-index probing.
 
 mod classify;
 mod jaccard;
+mod near_miss;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -12,14 +16,19 @@ pub use classify::{AUTO_REFACTOR_FLOOR, REVIEW_FIRST_FLOOR, classify};
 #[doc(inline)]
 pub use jaccard::jaccard;
 
+use near_miss::collect_near_miss_edges;
+
+#[cfg(test)]
+use near_miss::{fingerprint_df_for_test, prefix_keys, scored_near_miss};
+
 /// Compares normalized forms and returns findings above `threshold`.
 ///
 /// Exact fingerprint-bag matches become n-ary findings at score `1.0`.
 /// Remaining forms are linked by multiset Jaccard via an inverted fingerprint
-/// index into multi-member Type-3 components (connected components; score is
-/// the minimum pairwise Jaccard among members). Components that are not
-/// threshold-closed split into exclusive pair findings. Production and test
-/// forms (`FormKind`) never pair.
+/// index (DF-ordered occurrence prefix for candidates) into multi-member
+/// Type-3 components (connected components; score is the minimum pairwise
+/// Jaccard among members). Components that are not threshold-closed split into
+/// exclusive pair findings. Production and test forms (`FormKind`) never pair.
 #[must_use]
 pub fn compare(forms: &[NormalizedForm], threshold: f64) -> Vec<Finding> {
     let mut claimed = BTreeSet::new();
@@ -195,60 +204,6 @@ fn unclaimed_sorted<'a>(
     remaining
 }
 
-fn build_fingerprint_index(remaining: &[&NormalizedForm]) -> HashMap<u64, Vec<usize>> {
-    let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (idx, form) in remaining.iter().enumerate() {
-        for &fp in form.fingerprints.keys() {
-            index.entry(fp).or_default().push(idx);
-        }
-    }
-    index
-}
-
-fn collect_near_miss_edges(
-    remaining: &[&NormalizedForm],
-    threshold: f64,
-) -> Vec<(usize, usize, f64)> {
-    let index = build_fingerprint_index(remaining);
-    let claimed = BTreeSet::new();
-    let mut edges = Vec::new();
-    let mut seen_pairs = BTreeSet::new();
-    for (left_idx, left) in remaining.iter().enumerate() {
-        for &fp in left.fingerprints.keys() {
-            let postings = index.get(&fp).map_or(&[][..], Vec::as_slice);
-            for &right_idx in postings {
-                if let Some(score) = edge_score_if_new(
-                    remaining,
-                    left_idx,
-                    left,
-                    right_idx,
-                    &claimed,
-                    threshold,
-                    &mut seen_pairs,
-                ) {
-                    edges.push((left_idx, right_idx, score));
-                }
-            }
-        }
-    }
-    edges
-}
-
-fn edge_score_if_new(
-    remaining: &[&NormalizedForm],
-    left_idx: usize,
-    left: &NormalizedForm,
-    right_idx: usize,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-    seen_pairs: &mut BTreeSet<(usize, usize)>,
-) -> Option<f64> {
-    if right_idx <= left_idx || !seen_pairs.insert((left_idx, right_idx)) {
-        return None;
-    }
-    scored_near_miss(left, remaining[right_idx], claimed, threshold)
-}
-
 fn near_miss_components(n: usize, edges: &[(usize, usize, f64)]) -> Vec<Vec<usize>> {
     let mut parent: Vec<usize> = (0..n).collect();
     for &(a, b, _) in edges {
@@ -324,33 +279,6 @@ fn emit_greedy_pair_findings(
     }
 }
 
-fn scored_near_miss(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-) -> Option<f64> {
-    if !near_miss_eligible(left, right, claimed, threshold) {
-        return None;
-    }
-    partial_jaccard_score(jaccard(&left.fingerprints, &right.fingerprints), threshold)
-}
-
-fn near_miss_eligible(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-) -> bool {
-    !claimed.contains(&right.id)
-        && left.kind == right.kind
-        && within_jaccard_window(left.bag_size(), right.bag_size(), threshold)
-}
-
-fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {
-    (score >= threshold && score < 1.0).then_some(score)
-}
-
 fn near_miss_component_finding(
     remaining: &[&NormalizedForm],
     member_idxs: &[usize],
@@ -378,7 +306,7 @@ fn near_miss_component_finding(
     }
 }
 
-fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> bool {
+pub(super) fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> bool {
     if threshold <= 0.0 {
         return true;
     }

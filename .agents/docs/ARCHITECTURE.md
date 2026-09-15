@@ -147,10 +147,10 @@ flowchart TD
 Identical fingerprint bags score `1.0`. Identifier traces then label the clone
 as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
 fingerprint index and connected-component near-miss multiset Jaccard (Type-3;
-score is the minimum pairwise Jaccard among members; components that are not
-threshold-closed split into exclusive pairs; window uses total bag size `Σ`
-counts). Production and test forms (`FormKind`) never pair. Findings sort
-most exact to least exact.
+DF-ordered occurrence prefix for candidates; score is the minimum pairwise
+Jaccard among members; components that are not threshold-closed split into
+exclusive pairs; window uses total bag size `Σ` counts). Production and test
+forms (`FormKind`) never pair. Findings sort most exact to least exact.
 
 JSON reports serialize fingerprints as a map from hash string/number to count
 (BREAKING versus the former unique-hash set).
@@ -177,7 +177,8 @@ Pipeline entry: [`analyze`](../../crates/dry-core/src/analyze.rs).
 | Walk | [`walk.rs`](../../crates/dry-core/src/walk.rs) | Recursive discovery; no symlink follow; symlink roots error; exclude by path component |
 | Config | [`config.rs`](../../crates/dry-core/src/config.rs) | TOML load, walk-up discover, threshold validate, `OutputFormat` |
 | Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer`, `NormalizeOutcome`, `NormalizeError` |
-| Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss, sort |
+| Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss components, sort |
+| Near-miss index | [`compare/near_miss.rs`](../../crates/dry-core/src/compare/near_miss.rs) | DF-ordered Jaccard prefix candidate generation |
 | Jaccard | [`compare/jaccard.rs`](../../crates/dry-core/src/compare/jaccard.rs) | Multiset similarity (`Σ min / Σ max`) |
 | Classify | [`compare/classify.rs`](../../crates/dry-core/src/compare/classify.rs) | `CloneType` and `Tier` from score and idents |
 | Domain | [`domain/`](../../crates/dry-core/src/domain/mod.rs) | `NormalizedForm`, `Finding`, spans, summary, enums |
