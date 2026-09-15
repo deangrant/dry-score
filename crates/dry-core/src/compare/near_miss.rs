@@ -86,15 +86,24 @@ pub(super) fn prefix_keys(
         return form.fingerprints.keys().copied().collect();
     }
     let need = prefix_mass(bag_size, threshold);
+    let keys = keys_sorted_by_df(form, df);
+    accumulate_prefix_keys(form, &keys, need)
+}
+
+fn keys_sorted_by_df(form: &NormalizedForm, df: &HashMap<u64, usize>) -> Vec<u64> {
     let mut keys: Vec<u64> = form.fingerprints.keys().copied().collect();
     keys.sort_by(|&left, &right| {
         let left_df = df.get(&left).copied().unwrap_or(0);
         let right_df = df.get(&right).copied().unwrap_or(0);
         left_df.cmp(&right_df).then_with(|| left.cmp(&right))
     });
+    keys
+}
+
+fn accumulate_prefix_keys(form: &NormalizedForm, keys: &[u64], need: usize) -> Vec<u64> {
     let mut mass = 0_usize;
     let mut out = Vec::new();
-    for fp in keys {
+    for &fp in keys {
         if mass >= need {
             break;
         }
