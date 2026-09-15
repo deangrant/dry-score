@@ -19,11 +19,12 @@ pub struct ReportSummary {
     pub type_3: u32,
     /// Files that returned `Ok` from normalize (includes ignore-file
     /// suppressions and files with no qualifying forms; excludes size skips,
-    /// I/O failures, and parse errors).
+    /// I/O failures, and parse errors). Text reports label this as `scanned=`.
     pub files_scanned: u32,
     /// Forms that entered comparison.
     pub forms_compared: u32,
-    /// Files skipped due to parse or I/O warnings.
+    /// Count of warning messages (size skips, I/O failures, parse errors, and
+    /// soft adapter warnings), not a distinct file-discovery counter.
     pub parse_warnings: u32,
 }
 

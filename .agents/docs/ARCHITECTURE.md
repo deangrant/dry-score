@@ -61,7 +61,7 @@ text, JSON, or both.
 **Runtime bar:**
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Workspace members: `dry-core`, `dry-rs`, `dry-go` ([`Cargo.toml`](../../Cargo.toml))
+- Workspace members: `dry-core`, `dry-rs`, `dry-go`, `dry-ts` ([`Cargo.toml`](../../Cargo.toml))
 - Language adapters implement
   [`LanguageNormalizer`](../../crates/dry-core/src/ports/normalizer.rs) and
   reuse the same comparison engine
@@ -69,7 +69,8 @@ text, JSON, or both.
   a normalizer and thin binary entrypoints
 - `NormNode` + FNV fingerprinting live in `dry-core::norm` (no AST deps)
 - Workspace lint `unsafe_code` is allow so Tree-sitter can link; `dry-core` and
-  `dry-rs` still `#![forbid(unsafe_code)]`. `dry-go` writes no `unsafe` in-tree.
+  `dry-rs` still `#![forbid(unsafe_code)]`. `dry-go` and `dry-ts` write no
+  `unsafe` in-tree.
 
 *Figure: analysis roots and config enter `dry-rs`; `dry-core` walks, normalizes
 via the adapter, compares forms, and emits the report.*
@@ -97,6 +98,7 @@ flowchart LR
 | [`crates/dry-core`](../../crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner, reporters |
 | [`crates/dry-rs`](../../crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
 | [`crates/dry-go`](../../crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
+| [`crates/dry-ts`](../../crates/dry-ts) | TypeScript Tree-sitter adapter and the `dry-ts` binary |
 
 Adapters depend on `dry-core` and plug in through `LanguageNormalizer`.
 
@@ -112,13 +114,15 @@ A `dry-rs` run proceeds as follows:
 2. Build [`RustNormalizer`](../../crates/dry-rs/src/normalize/mod.rs) from
    `walk.min_nodes` and `walk.min_lines`.
 3. Call [`analyze`](../../crates/dry-core/src/analyze.rs):
-   1. Collect sources with
+   1. Absolutize roots once (shared PathKind for walk + relativize).
+   2. Collect sources with
       [`walk::collect_source_files`](../../crates/dry-core/src/walk.rs).
-   2. Normalize each file (skip files over `walk.max_file_bytes` with a
+   3. Normalize files in parallel (skip files over `walk.max_file_bytes` with a
       warning; warn on unreadable paths; emit no forms when the file opts out).
-   3. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
+      Form IDs and warnings merge in walk order for deterministic compare.
+   4. [`compare`](../../crates/dry-core/src/compare/mod.rs) forms at
       `gate.threshold`.
-   4. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
+   5. Build the summary and [`Report`](../../crates/dry-core/src/report/mod.rs).
 4. Emit text and/or JSON. Map `fail_on_findings` to the process exit code.
       JSON serialize failure fails the run (exit 2); there is no alternate
       error-object schema.
@@ -145,9 +149,18 @@ flowchart TD
 Identical fingerprint bags score `1.0`. Identifier traces then label the clone
 as Type-1 (same ids) or Type-2 (renamed). Remaining forms use an inverted
 fingerprint index and connected-component near-miss multiset Jaccard (Type-3;
-score is the minimum edge Jaccard in the component; window uses total bag size
-`Σ` counts). Production and test forms (`FormKind`) never pair. Findings sort
-most exact to least exact.
+DF-ordered occurrence prefix for candidates; score is the minimum pairwise
+Jaccard among members; components that are not threshold-closed split into
+exclusive pairs; window uses total bag size `Σ` counts). Production and test
+forms (`FormKind`) never pair. Findings sort most exact to least exact.
+
+`FormKind` is language-idiomatic: Rust uses `#[test]` / `#[cfg(test)]` (and
+enclosing cfg); Go uses the `*_test.go` filename suffix only; TypeScript uses
+`.test.` / `.spec.` filename markers or a `__tests__` path component. Importable
+shared harness packages (for example Go `internal/testutil` in ordinary `.go`
+files) stay `Production` by design so clones against real production code remain
+visible—put test-only helpers in `*_test.go` (or TS test paths) to exclude them
+from production pairing.
 
 JSON reports serialize fingerprints as a map from hash string/number to count
 (BREAKING versus the former unique-hash set).
@@ -163,6 +176,15 @@ JSON reports serialize fingerprints as a map from hash string/number to count
 When the configured threshold is ≥ 0.85, emitted findings do not use the
 advisory band. Detail: [dry-rs-domain](../skills/dry-rs-domain/SKILL.md).
 
+### Report summary counters
+
+`summary.files_scanned` (text banner `scanned=`) counts files that returned
+`Ok` from normalize, including ignore-file suppressions and files with no
+qualifying forms. Size skips, I/O failures, and parse errors are **not**
+included; they contribute to `parse_warnings` / the warnings list instead.
+`parse_warnings` is a warning-message count (including soft adapter warnings
+on successful scans), not a discovery-file counter.
+
 ## `dry-core` module map
 
 Barrel: [`crates/dry-core/src/lib.rs`](../../crates/dry-core/src/lib.rs).
@@ -170,11 +192,12 @@ Pipeline entry: [`analyze`](../../crates/dry-core/src/analyze.rs).
 
 | Area | Path | Role |
 | ---- | ---- | ---- |
-| Orchestration | [`analyze.rs`](../../crates/dry-core/src/analyze.rs) | Walk → normalize → compare → summary → `Report` |
+| Orchestration | [`analyze.rs`](../../crates/dry-core/src/analyze.rs) | Absolutize roots → walk → parallel normalize (ordered merge) → compare → summary → `Report` |
 | Walk | [`walk.rs`](../../crates/dry-core/src/walk.rs) | Recursive discovery; no symlink follow; symlink roots error; exclude by path component |
 | Config | [`config.rs`](../../crates/dry-core/src/config.rs) | TOML load, walk-up discover, threshold validate, `OutputFormat` |
-| Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer`, `NormalizeOutcome`, `NormalizeError` |
-| Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss, sort |
+| Port | [`ports/normalizer.rs`](../../crates/dry-core/src/ports/normalizer.rs) | `LanguageNormalizer: Sync`, `NormalizeOutcome`, `NormalizeError` |
+| Compare | [`compare/mod.rs`](../../crates/dry-core/src/compare/mod.rs) | Exact buckets, near-miss components, sort |
+| Near-miss index | [`compare/near_miss.rs`](../../crates/dry-core/src/compare/near_miss.rs) | DF-ordered Jaccard prefix candidate generation |
 | Jaccard | [`compare/jaccard.rs`](../../crates/dry-core/src/compare/jaccard.rs) | Multiset similarity (`Σ min / Σ max`) |
 | Classify | [`compare/classify.rs`](../../crates/dry-core/src/compare/classify.rs) | `CloneType` and `Tier` from score and idents |
 | Domain | [`domain/`](../../crates/dry-core/src/domain/mod.rs) | `NormalizedForm`, `Finding`, spans, summary, enums |
@@ -193,12 +216,12 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Runner | [`runner.rs`](../../crates/dry-rs/src/runner.rs) | Thin Rust wrapper around `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-rs/src/normalize/mod.rs) | `RustNormalizer` / `LanguageNormalizer` |
 | Extract | [`normalize/extract/`](../../crates/dry-rs/src/normalize/extract/) | Named forms from items, impls, trait defaults, and closures (`$closure:L{line}`) |
-| Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand to expr children; others keep token-tree shape |
-| Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission (expr, pat, lit, mac, ops) |
+| Emit / macros | [`normalize/emit/mac.rs`](../../crates/dry-rs/src/normalize/emit/mac.rs) | Allowlisted macros expand when bare or `std`/`core`/`alloc`; others keep token-tree shape |
+| Emit | [`normalize/emit/`](../../crates/dry-rs/src/normalize/emit/mod.rs) | Structural tree emission; nested closures stubbed as leaf in parent bags |
 | Expr wrap | [`normalize/emit/expr/wrap.rs`](../../crates/dry-rs/src/normalize/emit/expr/wrap.rs) | Recursive emit helpers (optional, unary, block, pair, range) |
 | Shared emit | [`normalize/emit/shared.rs`](../../crates/dry-rs/src/normalize/emit/shared.rs) | Pure helpers only (must not import `expr`) |
 | Fingerprint | [`norm/fingerprint.rs`](../../crates/dry-core/src/norm/fingerprint.rs) | Fixed FNV-1a subtree hashes → fingerprint bag (hash → count) |
-| Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-rs/src/normalize/suppress.rs) | Full-line `dry-rs:ignore` / `ignore-file` (`//`, `///`, `//!`, `/* */`) |
 | Placeholders | [`placeholders.rs`](../../crates/dry-core/src/placeholders.rs) | Positional ident renaming |
 | Tree | [`norm/tree.rs`](../../crates/dry-core/src/norm/tree.rs) | `NormNode` leaf and branch |
 
@@ -213,10 +236,27 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | ---- | ---- | ----- |
 | Runner | [`runner.rs`](../../crates/dry-go/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
 | Normalizer | [`normalize/mod.rs`](../../crates/dry-go/src/normalize/mod.rs) | `GoNormalizer` / `LanguageNormalizer` |
-| Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; soft `has_error` + partial CST |
-| Extract | [`normalize/extract.rs`](../../crates/dry-go/src/normalize/extract.rs) | Funcs, methods, `func_literal` |
-| Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode` |
-| Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` |
+| Parse | [`normalize/parse.rs`](../../crates/dry-go/src/normalize/parse.rs) | Thread-local Tree-sitter parser; `has_error` fails closed (no forms) |
+| Extract | [`normalize/extract/`](../../crates/dry-go/src/normalize/extract/) | Funcs, methods, `func_literal`; kind from `*_test.go` only |
+| Emit | [`normalize/emit.rs`](../../crates/dry-go/src/normalize/emit.rs) | CST → `NormNode`; nested `func_literal` stubbed in parent bags |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-go/src/normalize/suppress.rs) | Full-line `dry-go:ignore` (`//`, `///`, `//!`, `/* */`) |
+
+## `dry-ts` module map
+
+[`main.rs`](../../crates/dry-ts/src/main.rs) calls
+[`runner::run_from_env`](../../crates/dry-ts/src/runner.rs), which parses argv via
+`dry-core` (`bin_name: "dry-ts"`, force
+`extensions = ["ts", "tsx", "mts", "cts"]`) and runs
+[`TsNormalizer`](../../crates/dry-ts/src/normalize/mod.rs).
+
+| Area | Path | Notes |
+| ---- | ---- | ----- |
+| Runner | [`runner.rs`](../../crates/dry-ts/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
+| Normalizer | [`normalize/mod.rs`](../../crates/dry-ts/src/normalize/mod.rs) | `TsNormalizer` / `LanguageNormalizer`; skips `*.d.ts` |
+| Parse | [`normalize/parse.rs`](../../crates/dry-ts/src/normalize/parse.rs) | Dual thread-local TS / TSX parsers; `has_error` fails closed (no forms) |
+| Extract | [`normalize/extract/`](../../crates/dry-ts/src/normalize/extract/) | Funcs, methods, arrows, function expressions |
+| Emit | [`normalize/emit.rs`](../../crates/dry-ts/src/normalize/emit.rs) | CST → `NormNode`; nested arrows/function expressions stubbed in parent bags |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-ts/src/normalize/suppress.rs) | Full-line `dry-ts:ignore` (`//`, `///`, `//!`, `/* */`) |
 
 *Figure: `main` → runner → CLI and analyze; the normalizer extracts, emits,
 fingerprints, and applies suppress markers.*
@@ -243,13 +283,15 @@ flowchart TB
 | Adapters implement `LanguageNormalizer`; scoring stays in `dry-core` | Do not fork Jaccard or tier rules in an adapter |
 | Fingerprints are toolchain-stable and location-independent | Do not bake spans or absolute paths into hashes |
 | Digests are 64-bit FNV-1a | Birthday collisions are theoretically possible (rare false similarity); accepted for local analysis |
+| Recursive emit / `hash_node` may stack-overflow on pathological depth | Unlikely for normal sources under `max_file_bytes`; accepted residual (same class as FNV birthday risk) |
 | `emit/shared` must not import `expr` | Avoids a shared↔expr cycle; recursive wraps live in `expr/wrap` |
 | The walker does not follow symlinks | Analysis stays on the lexical tree under each root |
 | Symlink analysis roots are rejected | Avoids silent empty runs when the root itself is a link |
 | Config discovery/load do not follow symlinks | Symlinked `dry.toml` / `--config` paths are ignored or rejected |
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
-| Workspace members are `dry-core`, `dry-rs`, and `dry-go` | Update this document if you add or rename crates |
+| Workspace members are `dry-core`, `dry-rs`, `dry-go`, and `dry-ts` | Update this document if you add or rename crates |
+| Clippy-driven CC-split dispatch shells with full-line `// dry-*:ignore` are Keep-as-is | Do not re-merge `try_emit_*` / one-flag CLI / adapter-parallel shells solely to reduce ignore noise; see [dry-dogfood](../skills/dry-dogfood/SKILL.md) and [design-scan](../commands/design-scan.md) |
 
 ## Exit codes
 
@@ -263,13 +305,20 @@ flowchart TB
 
 `dry-rs` is a local analysis tool. The binary does not open network sockets or
 execute untrusted code. The walker does not follow file or directory symlinks,
-and rejects a symlink as an analysis root. Residual risk is local filesystem
-read under the chosen roots—not remote code execution.
+and rejects a symlink as an analysis root. Symlink-root refusal and related walk
+tests are exercised under `#[cfg(unix)]` (CI targets Linux); there is no
+Windows junction harness. Symlink refusal is best-effort on a **stable** tree:
+concurrent replacement of a discovered path between walk and `read_to_string`
+(TOCTOU) is out of scope for the local trusted-operator model.
+`--json-out` writes or overwrites any user-supplied path and is not confined to
+analysis roots (same pattern as typical report CLIs). Residual risk is local
+filesystem read/write under the operator's credentials—not remote code
+execution.
 
 ## Verification and agent layout
 
 Run full local gates (fmt, Clippy, deny, audit, test, dry-rs self-scan and
-dry-go dogfood scan with `findings=0`):
+dry-go / dry-ts dogfood scans with `findings=0`):
 
 ```bash
 ./scripts/verify.sh full
@@ -282,8 +331,12 @@ For a faster loop (fmt, Clippy, test only):
 ```
 
 The dry-go gate scans [`crates/dry-go/dogfood/`](../../crates/dry-go/dogfood/)
-(unique non-clone corpus) because production Go sources outside fixtures are
-absent from this repo.
+and the dry-ts gate scans [`crates/dry-ts/dogfood/`](../../crates/dry-ts/dogfood/)
+(tiny unique non-clone corpora) because this repo has no production Go /
+TypeScript sources outside fixtures. Dogfood proves the binary can scan a clean
+tree with `findings=0`; it is **not** a broad language corpus. Clone detection
+semantics are covered by each adapter’s `fixtures_integration` tests plus
+`dry-core` compare unit tests (exact / near-miss / clustering).
 Detail: [verify-gates](../skills/verify-gates/SKILL.md), or run `/verify`.
 
 Agent support lives under `.agents/`:

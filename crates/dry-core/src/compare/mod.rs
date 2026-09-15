@@ -1,7 +1,11 @@
 //! Comparison engine: exact buckets then inverted-index Jaccard near-miss.
+//!
+//! Near-miss candidates use a DF-ordered Jaccard occurrence prefix so common
+//! leaf digests do not dominate inverted-index probing.
 
 mod classify;
 mod jaccard;
+mod near_miss;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -12,12 +16,19 @@ pub use classify::{AUTO_REFACTOR_FLOOR, REVIEW_FIRST_FLOOR, classify};
 #[doc(inline)]
 pub use jaccard::jaccard;
 
+use near_miss::collect_near_miss_edges;
+
+#[cfg(test)]
+use near_miss::{fingerprint_df_for_test, prefix_keys, scored_near_miss};
+
 /// Compares normalized forms and returns findings above `threshold`.
 ///
 /// Exact fingerprint-bag matches become n-ary findings at score `1.0`.
 /// Remaining forms are linked by multiset Jaccard via an inverted fingerprint
-/// index into multi-member Type-3 components (connected components; score is
-/// the minimum edge Jaccard). Production and test forms (`FormKind`) never pair.
+/// index (DF-ordered occurrence prefix for candidates) into multi-member
+/// Type-3 components (connected components; score is the minimum pairwise
+/// Jaccard among members). Components that are not threshold-closed split into
+/// exclusive pair findings. Production and test forms (`FormKind`) never pair.
 #[must_use]
 pub fn compare(forms: &[NormalizedForm], threshold: f64) -> Vec<Finding> {
     let mut claimed = BTreeSet::new();
@@ -93,11 +104,13 @@ fn push_cluster_if_pair(
         return;
     }
     let (identical, leftovers) = partition_by_idents(forms, group);
-    for ident_group in identical {
-        push_exact_finding(forms, &ident_group, claimed, threshold, true, findings);
+    for ident_group in &identical {
+        push_exact_finding(forms, ident_group, claimed, threshold, true, findings);
     }
-    if leftovers.len() >= 2 {
-        push_exact_finding(forms, &leftovers, claimed, threshold, false, findings);
+    // Renamed leftovers share the bag with Type-1 siblings; emit Type-2 for the
+    // full kind-group so a singleton rename is not dropped after Type-1 claims.
+    if !leftovers.is_empty() {
+        push_exact_finding(forms, group, claimed, threshold, false, findings);
     }
 }
 
@@ -155,15 +168,27 @@ fn near_miss_findings(
     let edges = collect_near_miss_edges(&remaining, threshold);
     let components = near_miss_components(remaining.len(), &edges);
     let mut findings = Vec::new();
-    for (member_idxs, score) in components {
-        findings.push(near_miss_component_finding(
-            &remaining,
-            &member_idxs,
-            score,
-            threshold,
-        ));
-        for &idx in &member_idxs {
-            claimed.insert(remaining[idx].id);
+    for member_idxs in components {
+        let min_pair = component_pairwise_min(&remaining, &member_idxs);
+        if min_pair >= threshold {
+            findings.push(near_miss_component_finding(
+                &remaining,
+                &member_idxs,
+                min_pair,
+                threshold,
+            ));
+            for &idx in &member_idxs {
+                claimed.insert(remaining[idx].id);
+            }
+        } else {
+            emit_greedy_pair_findings(
+                &remaining,
+                &member_idxs,
+                &edges,
+                threshold,
+                claimed,
+                &mut findings,
+            );
         }
     }
     findings
@@ -173,6 +198,7 @@ fn unclaimed_sorted<'a>(
     forms: &'a [NormalizedForm],
     claimed: &BTreeSet<u64>,
 ) -> Vec<&'a NormalizedForm> {
+    // dry-rs:ignore. Collect-then-sort helper; parallel with members_from_indices.
     let mut remaining: Vec<&NormalizedForm> = forms
         .iter()
         .filter(|f| !claimed.contains(&f.id) && !f.fingerprints.is_empty())
@@ -181,77 +207,16 @@ fn unclaimed_sorted<'a>(
     remaining
 }
 
-fn build_fingerprint_index(remaining: &[&NormalizedForm]) -> HashMap<u64, Vec<usize>> {
-    let mut index: HashMap<u64, Vec<usize>> = HashMap::new();
-    for (idx, form) in remaining.iter().enumerate() {
-        for &fp in form.fingerprints.keys() {
-            index.entry(fp).or_default().push(idx);
-        }
-    }
-    index
-}
-
-fn collect_near_miss_edges(
-    remaining: &[&NormalizedForm],
-    threshold: f64,
-) -> Vec<(usize, usize, f64)> {
-    let index = build_fingerprint_index(remaining);
-    let claimed = BTreeSet::new();
-    let mut edges = Vec::new();
-    let mut seen_pairs = BTreeSet::new();
-    for (left_idx, left) in remaining.iter().enumerate() {
-        for &fp in left.fingerprints.keys() {
-            let postings = index.get(&fp).map_or(&[][..], Vec::as_slice);
-            for &right_idx in postings {
-                if let Some(score) = edge_score_if_new(
-                    remaining,
-                    left_idx,
-                    left,
-                    right_idx,
-                    &claimed,
-                    threshold,
-                    &mut seen_pairs,
-                ) {
-                    edges.push((left_idx, right_idx, score));
-                }
-            }
-        }
-    }
-    edges
-}
-
-fn edge_score_if_new(
-    remaining: &[&NormalizedForm],
-    left_idx: usize,
-    left: &NormalizedForm,
-    right_idx: usize,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-    seen_pairs: &mut BTreeSet<(usize, usize)>,
-) -> Option<f64> {
-    if right_idx <= left_idx || !seen_pairs.insert((left_idx, right_idx)) {
-        return None;
-    }
-    scored_near_miss(left, remaining[right_idx], claimed, threshold)
-}
-
-fn near_miss_components(n: usize, edges: &[(usize, usize, f64)]) -> Vec<(Vec<usize>, f64)> {
+fn near_miss_components(n: usize, edges: &[(usize, usize, f64)]) -> Vec<Vec<usize>> {
     let mut parent: Vec<usize> = (0..n).collect();
-    let mut min_edge: Vec<Option<f64>> = vec![None; n];
-    for &(a, b, score) in edges {
+    for &(a, b, _) in edges {
         let ra = find_root(&mut parent, a);
         let rb = find_root(&mut parent, b);
-        let merged = [min_edge[ra], min_edge[rb], Some(score)]
-            .into_iter()
-            .flatten()
-            .fold(score, f64::min);
         if ra != rb {
             parent[rb] = ra;
-            min_edge[rb] = None;
         }
-        min_edge[ra] = Some(merged);
     }
-    group_components(n, &mut parent, &min_edge)
+    group_components(n, &mut parent)
 }
 
 fn find_root(parent: &mut [usize], mut i: usize) -> usize {
@@ -262,49 +227,59 @@ fn find_root(parent: &mut [usize], mut i: usize) -> usize {
     i
 }
 
-fn group_components(
-    n: usize,
-    parent: &mut [usize],
-    min_edge: &[Option<f64>],
-) -> Vec<(Vec<usize>, f64)> {
+fn group_components(n: usize, parent: &mut [usize]) -> Vec<Vec<usize>> {
     let mut groups: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
     for i in 0..n {
         groups.entry(find_root(parent, i)).or_default().push(i);
     }
-    groups
-        .into_iter()
-        .filter_map(|(root, members)| {
-            let score = min_edge[root]?;
-            (members.len() >= 2).then_some((members, score))
-        })
-        .collect()
+    groups.into_values().filter(|members| members.len() >= 2).collect()
 }
 
-fn scored_near_miss(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
-    threshold: f64,
-) -> Option<f64> {
-    if !near_miss_eligible(left, right, claimed, threshold) {
-        return None;
+fn component_pairwise_min(remaining: &[&NormalizedForm], members: &[usize]) -> f64 {
+    let mut min_score = 1.0_f64;
+    for (i, &left_idx) in members.iter().enumerate() {
+        for &right_idx in &members[i + 1..] {
+            let score = jaccard(
+                &remaining[left_idx].fingerprints,
+                &remaining[right_idx].fingerprints,
+            );
+            min_score = min_score.min(score);
+        }
     }
-    partial_jaccard_score(jaccard(&left.fingerprints, &right.fingerprints), threshold)
+    min_score
 }
 
-fn near_miss_eligible(
-    left: &NormalizedForm,
-    right: &NormalizedForm,
-    claimed: &BTreeSet<u64>,
+fn emit_greedy_pair_findings(
+    remaining: &[&NormalizedForm],
+    member_idxs: &[usize],
+    edges: &[(usize, usize, f64)],
     threshold: f64,
-) -> bool {
-    !claimed.contains(&right.id)
-        && left.kind == right.kind
-        && within_jaccard_window(left.bag_size(), right.bag_size(), threshold)
-}
-
-fn partial_jaccard_score(score: f64, threshold: f64) -> Option<f64> {
-    (score >= threshold && score < 1.0).then_some(score)
+    claimed: &mut BTreeSet<u64>,
+    findings: &mut Vec<Finding>,
+) {
+    let member_set: BTreeSet<usize> = member_idxs.iter().copied().collect();
+    let mut component_edges: Vec<(usize, usize, f64)> = edges
+        .iter()
+        .copied()
+        .filter(|(a, b, _)| member_set.contains(a) && member_set.contains(b))
+        .collect();
+    component_edges.sort_by(|left, right| right.2.total_cmp(&left.2));
+    let mut used = BTreeSet::new();
+    for (a, b, score) in component_edges {
+        if used.contains(&a) || used.contains(&b) {
+            continue;
+        }
+        used.insert(a);
+        used.insert(b);
+        findings.push(near_miss_component_finding(
+            remaining,
+            &[a, b],
+            score,
+            threshold,
+        ));
+        claimed.insert(remaining[a].id);
+        claimed.insert(remaining[b].id);
+    }
 }
 
 fn near_miss_component_finding(
@@ -334,7 +309,7 @@ fn near_miss_component_finding(
     }
 }
 
-fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> bool {
+pub(super) fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> bool {
     if threshold <= 0.0 {
         return true;
     }
@@ -345,6 +320,7 @@ fn within_jaccard_window(left_len: usize, right_len: usize, threshold: f64) -> b
 }
 
 fn members_from_indices(forms: &[NormalizedForm], indices: &[usize]) -> Vec<FormMember> {
+    // dry-rs:ignore. Collect-then-sort helper; parallel with unclaimed_sorted.
     let mut members: Vec<FormMember> = indices
         .iter()
         .map(|&i| FormMember::new(forms[i].path.clone(), forms[i].span, forms[i].name.clone()))
@@ -362,6 +338,7 @@ fn sort_findings(findings: &mut [Finding]) {
 }
 
 fn member_sort_key(finding: &Finding) -> (String, u32, String) {
+    // dry-rs:ignore. Thin map-or-default; parallel shape with path_segment_leaves.
     finding
         .members
         .first()

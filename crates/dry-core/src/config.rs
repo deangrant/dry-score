@@ -115,7 +115,6 @@ fn default_excludes() -> Vec<String> {
         "target".to_owned(),
         ".git".to_owned(),
         "fixtures".to_owned(),
-        "tests".to_owned(),
     ]
 }
 
@@ -251,7 +250,6 @@ mod tests {
                 "target".to_owned(),
                 ".git".to_owned(),
                 "fixtures".to_owned(),
-                "tests".to_owned(),
             ]
         );
     }

@@ -15,6 +15,7 @@ description: >-
 | [`crates/dry-core`](../../../crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner — **no** AST deps |
 | [`crates/dry-rs`](../../../crates/dry-rs) | Rust `syn` normalizer implementing `LanguageNormalizer` |
 | [`crates/dry-go`](../../../crates/dry-go) | Go Tree-sitter normalizer implementing `LanguageNormalizer` |
+| [`crates/dry-ts`](../../../crates/dry-ts) | TypeScript Tree-sitter normalizer implementing `LanguageNormalizer` |
 
 Language adapters belong in dedicated crates that reuse `dry-core` comparison.
 
@@ -33,9 +34,16 @@ discover files → parse/normalize → fingerprint index → match → report
 - Fingerprints are a **bag** (`BTreeMap<u64, u32>`): repeated identical subtrees
   increase counts; scoring uses multiset Jaccard.
 - Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
-  test/cfg attrs (language-idiomatic vs Go `_test.go`).
-- Allowlisted macros expand to normalized expr children (`macro_expand:…`);
-  others keep token-tree emission.
+  test/cfg attrs (language-idiomatic vs Go `_test.go` vs TypeScript
+  `.test.` / `.spec.` / `__tests__`).
+- Go/TS classify **only** by path convention: non-`*_test.go` (and non-TS test
+  paths) stay `Production`, including importable harness packages. Put
+  test-only helpers under those conventions so they do not pair with production.
+- Nested extractable units (`closure` / `func_literal` / arrows) are **stubbed**
+  in parent body fingerprints; nested forms still fingerprint their own bodies.
+- Allowlisted macros expand to normalized expr children (`macro_expand:…`) when
+  the path is bare or rooted at `std`/`core`/`alloc`; others keep token-tree
+  emission.
 - Emit helpers: recursive expr wrappers live under `normalize/emit/expr/`;
   [`shared.rs`](../../../crates/dry-rs/src/normalize/emit/shared.rs) stays pure
   (must not import `expr`).
@@ -44,7 +52,9 @@ discover files → parse/normalize → fingerprint index → match → report
 
 1. Exact buckets (identical fingerprint bags) → score `1.0`
 2. Near-miss via inverted index + multiset Jaccard connected components
-   (window on `Σ` counts); production vs test forms never pair
+   (window on `Σ` counts; DF-ordered occurrence prefix for candidates; score
+   is min pairwise among members; non-threshold-closed components split into
+   exclusive pairs); production vs test forms never pair
 3. Sort most exact → least exact
 
 ## Labels
@@ -60,11 +70,16 @@ discover files → parse/normalize → fingerprint index → match → report
   [`dry.example.toml`](../../../dry.example.toml).
 - Key knobs: `gate.threshold`, `fail_on_findings`, `walk.min_nodes`,
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
-- Default `walk.exclude` includes `tests` (replacement list, not merge).
+- Default `walk.exclude` is `target`, `.git`, `fixtures` (replacement list, not
+  merge). Add `tests` explicitly to skip test trees.
 - Walker does **not** follow symlinks; a symlink analysis root errors.
-- Go parse soft-fails on `has_error` and records `NormalizeOutcome.warnings`.
+- Go / TypeScript parse fails closed on `has_error` (no forms; analyze records
+  a warning), matching Rust `syn` parse failure.
 - Full verify includes dry-go dogfood under
-  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/).
+  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/) and dry-ts
+  dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/)
+  (smoke/`findings=0` on tiny non-clone trees—not broad language corpora;
+  fixtures + `dry-core` tests cover clone semantics).
 
 ## Suppressions
 

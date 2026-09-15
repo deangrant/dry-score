@@ -46,7 +46,9 @@ pub struct NormalizeOutcome {
 /// Adapters own parsing, rename-invariant normalization, size filtering, and
 /// suppress-marker handling. Discovery (which paths to open) stays with the
 /// caller via config-driven walk options.
-pub trait LanguageNormalizer {
+///
+/// Implementors must be [`Sync`] so analysis can normalize files in parallel.
+pub trait LanguageNormalizer: Sync {
     /// Parses and normalizes one source file into comparable forms.
     ///
     /// Contracts:

@@ -63,9 +63,11 @@ fn exact_cluster_splits_type1_from_renamed_singleton() {
         form(3, 10, &[1, 2, 3], &["y"]),
     ];
     let findings = compare(&forms, 0.85);
-    assert_eq!(findings.len(), 1);
-    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type1);
-    assert_eq!(findings[0].members.len(), 2);
+    assert_eq!(findings.len(), 2);
+    let type1 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type1);
+    assert!(type1.is_some_and(|f| f.members.len() == 2));
+    let type2 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type2);
+    assert!(type2.is_some_and(|f| f.members.len() == 3));
 }
 
 #[test]
@@ -83,7 +85,7 @@ fn exact_cluster_emits_type1_and_type2_leftovers() {
     let type1 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type1);
     assert!(type1.is_some_and(|f| f.members.len() == 2));
     let type2 = findings.iter().find(|f| f.clone_type == crate::domain::CloneType::Type2);
-    assert!(type2.is_some_and(|f| f.members.len() == 2));
+    assert!(type2.is_some_and(|f| f.members.len() == 4));
 }
 
 #[test]
@@ -227,34 +229,65 @@ fn near_miss_skips_out_of_window_shared_fingerprint() {
     assert!(compare(&forms, 0.9).is_empty());
 }
 
-#[test]
-fn near_miss_clusters_clique_and_chain_components() {
-    // Clique: all pairs near-miss. Chain: A~B and B~C only (A~C below threshold).
-    let clique = [
-        form(1, 4, &[1, 2, 3, 4], &["a"]),
-        form(2, 4, &[1, 2, 3, 5], &["a"]),
-        form(3, 4, &[1, 2, 3, 6], &["a"]),
-    ];
-    let clique_findings = compare(&clique, 0.5);
-    assert_eq!(clique_findings.len(), 1);
-    assert_eq!(clique_findings[0].members.len(), 3);
-    assert_eq!(
-        clique_findings[0].clone_type,
-        crate::domain::CloneType::Type3
-    );
+fn assert_type3_group(
+    forms: &[NormalizedForm],
+    threshold: f64,
+    member_count: usize,
+    expected_score: f64,
+) {
+    let findings = compare(forms, threshold);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), member_count);
+    assert_eq!(findings[0].clone_type, crate::domain::CloneType::Type3);
+    assert!((findings[0].score - expected_score).abs() < f64::EPSILON);
+}
 
-    let chain = [
-        form(1, 4, &[1, 2, 3, 4], &["a"]),
-        form(2, 4, &[1, 2, 3, 5], &["a"]),
-        form(3, 4, &[2, 3, 5, 6], &["a"]),
-    ];
-    let chain_findings = compare(&chain, 0.5);
-    assert_eq!(chain_findings.len(), 1);
-    assert_eq!(chain_findings[0].members.len(), 3);
-    assert_eq!(
-        chain_findings[0].clone_type,
-        crate::domain::CloneType::Type3
+#[test]
+fn near_miss_clusters_clique_and_splits_chain() {
+    // Clique: all pairs near-miss → one 3-member finding.
+    // Chain: A~B and B~C only (A~C below threshold) → exclusive pair.
+    assert_type3_group(
+        &[
+            form(1, 4, &[1, 2, 3, 4], &["a"]),
+            form(2, 4, &[1, 2, 3, 5], &["a"]),
+            form(3, 4, &[1, 2, 3, 6], &["a"]),
+        ],
+        0.5,
+        3,
+        0.6,
     );
+    assert_type3_group(
+        &[
+            form(1, 4, &[1, 2, 3, 4], &["a"]),
+            form(2, 4, &[1, 2, 3, 5], &["a"]),
+            form(3, 4, &[2, 3, 5, 6], &["a"]),
+        ],
+        0.5,
+        2,
+        0.6,
+    );
+}
+
+#[test]
+fn near_miss_chain_does_not_inflate_auto_refactor_tier() {
+    // Neighbor edges ≥ 0.95, but A–C is weaker; score must be min pairwise.
+    let a_fps: Vec<u64> = (0..40).collect();
+    let mut b_fps: Vec<u64> = (1..40).collect();
+    b_fps.push(40);
+    let mut c_fps: Vec<u64> = (2..40).collect();
+    c_fps.extend([40, 41]);
+    let forms = [
+        form(1, 40, &a_fps, &["a"]),
+        form(2, 40, &b_fps, &["a"]),
+        form(3, 40, &c_fps, &["a"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), 3);
+    assert!(findings[0].score < AUTO_REFACTOR_FLOOR);
+    assert!(findings[0].score >= REVIEW_FIRST_FLOOR);
+    assert_eq!(findings[0].tier, crate::domain::Tier::ReviewFirst);
+    assert!(findings[0].score >= 0.85);
 }
 
 #[test]
@@ -311,4 +344,55 @@ fn collect_near_miss_edges_skips_missing_index_postings() {
     let remaining = vec![&left, &right];
     let edges = collect_near_miss_edges(&remaining, 0.5);
     assert_eq!(edges.len(), 1);
+}
+
+fn form_counts(id: u64, nodes: u32, pairs: &[(u64, u32)], idents: &[&str]) -> NormalizedForm {
+    NormalizedForm {
+        id,
+        name: format!("f{id}"),
+        path: PathBuf::from("a.rs"),
+        span: FormSpan::new(1, 10),
+        kind: FormKind::Production,
+        node_count: nodes,
+        fingerprints: pairs.iter().copied().collect(),
+        ident_trace: idents.iter().map(|s| (*s).to_owned()).collect(),
+    }
+}
+
+#[test]
+fn near_miss_recall_when_overlap_is_mostly_common_leaf() {
+    // Multiset Jaccard ≈ 0.94 from a shared high-DF leaf plus small shared tail.
+    let forms = [
+        form_counts(1, 100, &[(1, 94), (10, 3), (11, 3)], &["a"]),
+        form_counts(2, 100, &[(1, 94), (10, 3), (12, 3)], &["a"]),
+        // Raises DF of leaf 1 without pairing against the near-miss twins.
+        form_counts(3, 100, &[(1, 10), (30, 45), (31, 45)], &["a"]),
+    ];
+    let findings = compare(&forms, 0.85);
+    assert_eq!(findings.len(), 1);
+    assert_eq!(findings[0].members.len(), 2);
+    assert!(findings[0].score >= 0.85);
+    assert!(findings[0].score < 1.0);
+}
+
+#[test]
+fn prefix_filter_avoids_common_leaf_all_pairs_clique() {
+    // Many forms share only leaf 1; each has a unique rare key. Prefix mass is 1
+    // at threshold 0.85 for bag_size 2, so only the rare key is indexed/probed.
+    let mut forms = Vec::new();
+    for i in 0..40_u64 {
+        forms.push(form(i + 1, 2, &[1, 1000 + i], &["a"]));
+    }
+    let remaining: Vec<&NormalizedForm> = forms.iter().collect();
+    let df = fingerprint_df_for_test(&remaining);
+    for form in &forms {
+        let keys = prefix_keys(form, &df, 0.85);
+        let rare = form.fingerprints.keys().copied().filter(|&fp| fp != 1).collect::<Vec<_>>();
+        assert_eq!(rare.len(), 1);
+        assert_eq!(keys, rare);
+        assert!(!keys.contains(&1));
+    }
+    let edges = collect_near_miss_edges(&remaining, 0.85);
+    assert!(edges.is_empty());
+    assert!(compare(&forms, 0.85).is_empty());
 }

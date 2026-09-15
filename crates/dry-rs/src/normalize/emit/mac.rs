@@ -8,7 +8,8 @@ use crate::normalize::placeholders::PlaceholderMap;
 use dry_core::NormNode;
 
 /// Emits a normalized tree for a macro, expanding allowlisted invocations when
-/// `emit_expr` can normalize argument expressions.
+/// the path is bare or rooted at `std`/`core`/`alloc` and `emit_expr` can
+/// normalize argument expressions.
 #[must_use]
 pub fn emit_macro(
     mac: &Macro,
@@ -17,6 +18,7 @@ pub fn emit_macro(
 ) -> NormNode {
     let name = macro_name(mac);
     if is_expand_allowlisted(&name)
+        && expand_path_allowed(&mac.path)
         && let Some(node) = try_expand_macro(mac, &name, placeholders, emit_expr)
     {
         return node;
@@ -75,6 +77,18 @@ fn is_expand_allowlisted(name: &str) -> bool {
             | "dbg"
             | "matches"
     )
+}
+
+/// Allow bare `assert_eq!` and `std`/`core`/`alloc` prefixes; reject custom crates.
+fn expand_path_allowed(path: &syn::Path) -> bool {
+    let mut segments = path.segments.iter();
+    let Some(first) = segments.next() else {
+        return false;
+    };
+    if segments.next().is_none() {
+        return true;
+    }
+    matches!(first.ident.to_string().as_str(), "std" | "core" | "alloc")
 }
 
 fn macro_name(mac: &Macro) -> String {
@@ -210,6 +224,21 @@ mod tests {
         assert_eq!(node.children.len(), 2);
         assert_eq!(node.children[0].label, "lit_int");
         assert_eq!(node.children[1].label, "lit_int");
+    }
+
+    #[test]
+    fn std_assert_eq_expands_like_bare() {
+        let bare = expr_macro(parse_quote!(assert_eq!(1, 2)));
+        let qualified = expr_macro(parse_quote!(std::assert_eq!(1, 2)));
+        assert_eq!(bare.label, "macro_expand:assert_eq:paren");
+        assert_eq!(qualified, bare);
+    }
+
+    #[test]
+    fn custom_crate_assert_eq_keeps_token_tree() {
+        let node = expr_macro(parse_quote!(fake::assert_eq!(1, 2)));
+        assert_eq!(node.label, "macro:assert_eq:paren");
+        assert!(!node.label.starts_with("macro_expand:"));
     }
 
     #[test]

@@ -1,7 +1,8 @@
 //! Suppression markers shared by language adapters.
 //!
-//! Markers must appear as a full-line `//` comment directive (optional leading
-//! whitespace). Trailing comments and string/URL substrings do not count.
+//! Markers must appear as a full-line comment directive (optional leading
+//! whitespace): `//`, `///`, `//!`, or a whole-line `/* … */` / `/** … */`.
+//! Trailing comments and string/URL substrings do not count.
 
 /// Returns true when the file opts out via `{marker}-file`.
 #[must_use]
@@ -37,8 +38,19 @@ fn directive_matches(line: &str, marker: &str) -> bool {
 
 fn full_line_comment_body(line: &str) -> Option<&str> {
     let trimmed = line.trim_start();
-    let rest = trimmed.strip_prefix("//")?;
-    Some(rest.trim_start())
+    if let Some(rest) = trimmed.strip_prefix("//") {
+        // Allow `///` and `//!` by consuming one extra `/` or `!`.
+        let rest = rest.strip_prefix('/').or_else(|| rest.strip_prefix('!')).unwrap_or(rest);
+        return Some(rest.trim_start());
+    }
+    block_comment_body(trimmed)
+}
+
+fn block_comment_body(trimmed: &str) -> Option<&str> {
+    let closed = trimmed.trim_end();
+    let inner = closed.strip_prefix("/*")?.strip_suffix("*/")?;
+    let inner = inner.strip_prefix('*').unwrap_or(inner);
+    Some(inner.trim())
 }
 
 fn token_continues(rest: &str) -> bool {
@@ -76,6 +88,25 @@ mod tests {
     }
 
     #[test]
+    fn accepts_doc_and_block_comment_directives() {
+        assert!(file_is_ignored(
+            "/// dry-rs:ignore-file\nfn a() {}\n",
+            MARKER
+        ));
+        assert!(file_is_ignored(
+            "//! dry-rs:ignore-file\nfn a() {}\n",
+            MARKER
+        ));
+        assert!(span_is_ignored("a\n/* dry-rs:ignore */\nb\n", 2, 2, MARKER));
+        assert!(span_is_ignored(
+            "a\n/** dry-rs:ignore. reason */\nb\n",
+            2,
+            2,
+            MARKER
+        ));
+    }
+
+    #[test]
     fn rejects_substring_false_positives() {
         assert!(!span_is_ignored(
             "let s = \"dry-rs:ignore\";\n",
@@ -96,5 +127,11 @@ mod tests {
         assert!(!span_is_ignored("  let dry_rs_ignore = 1;\n", 1, 1, MARKER));
         assert!(!span_is_ignored("// dry-rs:ignore-file\n", 1, 1, MARKER));
         assert!(!span_is_ignored("code; // dry-rs:ignore\n", 1, 1, MARKER));
+        assert!(!span_is_ignored(
+            "code; /* dry-rs:ignore */\n",
+            1,
+            1,
+            MARKER
+        ));
     }
 }

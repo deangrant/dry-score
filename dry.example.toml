@@ -8,6 +8,7 @@ fail_on_findings = false
 
 [output]
 # text | json | both
+# `both` also requires CLI `--json-out PATH` (JSON is not written to stderr).
 format = "text"
 
 [walk]
@@ -15,8 +16,8 @@ format = "text"
 extensions = ["rs"]
 # Directory name components to skip while walking (relative to each root).
 # Setting this key replaces the default list entirely (it does not merge).
-# `tests` is excluded by default; override exclude to scan integration-test duplication.
-exclude = ["target", ".git", "fixtures", "tests"]
+# Defaults are target, .git, and fixtures. Add "tests" here to skip test trees.
+exclude = ["target", ".git", "fixtures"]
 # Drop forms smaller than this structural node count.
 min_nodes = 10
 # Drop forms spanning fewer source lines than this.

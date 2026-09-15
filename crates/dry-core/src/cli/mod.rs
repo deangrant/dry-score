@@ -155,7 +155,7 @@ pub fn help_text(bin: &str) -> String {
          --exclude NAME[,NAME]...\n\
          --fail-on-findings\n\
          --no-fail-on-findings\n\
-         --json-out PATH\n\
+         --json-out PATH   (required with --format both; overwrites PATH)\n\
          --help\n"
     )
 }

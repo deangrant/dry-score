@@ -16,7 +16,13 @@ Canonical quality gates for this repository. Prefer
 | Tier | Steps |
 | --- | --- |
 | `lite` | `cargo fmt --all` → clippy `-D warnings` → `cargo test --workspace` |
-| `full` | `lite` + `cargo deny check` + `cargo audit` + dry-rs self-scan (**findings=0**) + dry-go dogfood scan (**findings=0**) |
+| `full` | `lite` + `cargo deny check` + `cargo audit` + dry-rs self-scan (**findings=0**) + dry-go dogfood scan (**findings=0**) + dry-ts dogfood scan (**findings=0**) |
+
+Go/TS dogfood trees under `crates/dry-go/dogfood/` and `crates/dry-ts/dogfood/`
+are tiny intentional non-clone smoke corpora (this repo has no product Go/TS
+sources). They gate `findings=0` for the binaries; clone semantics are covered
+by adapter fixture integration tests and `dry-core` compare unit tests—not by
+dogfood breadth.
 
 Default when finishing substantial work or “implement the plan”: **`full`**.
 
@@ -37,4 +43,5 @@ Default when finishing substantial work or “implement the plan”: **`full`**.
 
 - `lite`: fmt/clippy/test exit 0
 - `full`: above, plus deny/audit exit 0, dry-rs report contains `findings=0`,
-  dry-go dogfood report contains `findings=0`
+  dry-go dogfood report contains `findings=0`, dry-ts dogfood report contains
+  `findings=0`

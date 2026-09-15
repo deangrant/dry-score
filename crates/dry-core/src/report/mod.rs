@@ -88,6 +88,7 @@ mod tests {
     fn render_text_includes_tiers_and_warnings() {
         let text = render_text(&sample_report());
         assert!(text.contains("dry-rs report"));
+        assert!(text.contains("scanned="));
         assert!(text.contains("## review_first"));
         assert!(text.contains("## warnings"));
         assert!(text.contains("type_2"));

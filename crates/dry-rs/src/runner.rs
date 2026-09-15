@@ -79,7 +79,7 @@ mod tests {
         );
         assert!(emit_report(&report, OutputFormat::Text, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Json, None).is_ok());
-        assert!(emit_report(&report, OutputFormat::Both, None).is_ok());
+        assert!(emit_report(&report, OutputFormat::Both, None).is_err());
         let out = base.join("report.json");
         assert!(emit_report(&report, OutputFormat::Both, Some(&out)).is_ok());
         assert!(exit_for_findings(true, false) == ExitCode::from(1));

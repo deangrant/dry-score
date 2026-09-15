@@ -13,6 +13,7 @@ categories = ["development-tools", "command-line-utilities"]
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
+rayon = { workspace = true }
 
 [lints]
 workspace = true

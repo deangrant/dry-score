@@ -20,8 +20,8 @@ pub struct ParseResult {
 
 /// Parses Go source into a CST, reusing a thread-local parser.
 ///
-/// Soft-fails on syntax errors: still returns the tree when
-/// `root.has_error()` is true so extract can walk the partial CST.
+/// Callers must treat `has_error` as a hard failure and discard forms; this
+/// helper still returns the tree so diagnostics can inspect the root flag.
 ///
 /// # Errors
 ///
@@ -61,8 +61,8 @@ mod tests {
     use std::path::Path;
 
     #[test]
-    fn soft_error_yields_forms_and_warning() {
-        // Recoverable: valid function then junk tokens Tree-sitter marks ERROR.
+    fn parse_error_discards_forms() {
+        // Valid function then junk tokens Tree-sitter marks ERROR.
         let src = r"package p
 func ok(n int) int {
   if n < 0 {
@@ -73,24 +73,12 @@ func ok(n int) int {
 func broken( {
 ";
         #[expect(clippy::expect_used, reason = "test setup")]
-        let parsed = parse_source(src).expect("soft parse");
+        let parsed = parse_source(src).expect("parse tree");
         assert!(parsed.has_error);
         let normalizer = GoNormalizer::new(3, 2);
         let mut next_id = 1;
-        #[expect(clippy::expect_used, reason = "test setup")]
-        let outcome = normalizer
-            .normalize_file(Path::new("partial.go"), src, &mut next_id)
-            .expect("normalize");
-        assert!(
-            outcome.forms.iter().any(|f| f.name == "ok"),
-            "forms={:?}",
-            outcome.forms
-        );
-        assert!(
-            outcome.warnings.iter().any(|w| w.contains("partial CST")),
-            "warnings={:?}",
-            outcome.warnings
-        );
+        let outcome = normalizer.normalize_file(Path::new("partial.go"), src, &mut next_id);
+        assert!(outcome.is_err());
     }
 
     #[test]

@@ -76,17 +76,16 @@ fn emit_json(report: &Report) -> Result<(), CliError> {
 }
 
 fn emit_both(report: &Report, json_out: Option<&Path>) -> Result<(), CliError> {
+    let Some(path) = json_out else {
+        return Err(CliError::usage("--format both requires --json-out PATH"));
+    };
     print_out(&render_text(report));
     let json = json_report(report)?;
-    if let Some(path) = json_out {
-        fs::write(path, json).map_err(|err| CliError {
-            message: format!("failed to write {}: {err}", path.display()),
-            exit: ExitCode::from(2),
-            print_stdout: false,
-        })?;
-    } else {
-        print_err(&json);
-    }
+    fs::write(path, json).map_err(|err| CliError {
+        message: format!("failed to write {}: {err}", path.display()),
+        exit: ExitCode::from(2),
+        print_stdout: false,
+    })?;
     Ok(())
 }
 
@@ -114,7 +113,7 @@ pub fn print_out(message: &str) {
 /// Writes `message` to stderr.
 #[expect(
     clippy::print_stderr,
-    reason = "CLI writes usage errors and dual-format JSON fallback to stderr"
+    reason = "CLI writes usage and analysis errors to stderr"
 )]
 pub fn print_err(message: &str) {
     eprintln!("{message}");
@@ -176,7 +175,7 @@ mod tests {
         );
         assert!(emit_report(&report, OutputFormat::Text, None).is_ok());
         assert!(emit_report(&report, OutputFormat::Json, None).is_ok());
-        assert!(emit_report(&report, OutputFormat::Both, None).is_ok());
+        assert!(emit_report(&report, OutputFormat::Both, None).is_err());
         let out = base.join("report.json");
         assert!(emit_report(&report, OutputFormat::Both, Some(&out)).is_ok());
         let bad = base.join("missing-dir").join("report.json");

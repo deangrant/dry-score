@@ -23,7 +23,9 @@ Improvements that are valid but not required for merge.
 ### Keep-as-is
 
 Intentional patterns that look like smells but should not change (e.g. CC-split
-`try_emit_*` shells with `// dry-rs:ignore`).
+`try_emit_*` shells with `// dry-rs:ignore`). Re-merging those shells fights
+Clippy `cognitive_complexity` and dogfood `findings=0`; treat as Keep-as-is,
+not debt to clear by consolidation (see ARCHITECTURE hard invariants).
 
 ## Hard checks (must-fix if violated)
 

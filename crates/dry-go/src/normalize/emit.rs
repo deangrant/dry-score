@@ -9,6 +9,10 @@ pub fn emit_node(node: Node<'_>, source: &[u8], placeholders: &mut PlaceholderMa
     if should_skip(node) {
         return NormNode::leaf("skip");
     }
+    if node.kind() == "func_literal" {
+        // Nested literals are extracted as their own forms; stub in parents.
+        return NormNode::leaf("func_literal");
+    }
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
         return leaf;
     }
