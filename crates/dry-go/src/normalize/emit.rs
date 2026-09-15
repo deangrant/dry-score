@@ -151,6 +151,7 @@ mod tests {
 
     #[test]
     fn emit_renames_idents_consistently() {
+        // dry-rs:ignore. Tree-sitter adapter emit harness; parallel shape is intentional.
         let src = "package p\nfunc add(a int, b int) int { return a + b }\n";
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(src).expect("parse");

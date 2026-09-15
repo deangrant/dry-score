@@ -15,7 +15,7 @@ pub(super) fn emit_node(
         return NormNode::leaf("skip");
     }
     if is_nested_form_kind(node.kind()) {
-        // Nested arrows/functions are extracted as their own forms; stub here.
+        // Nested arrows and named functions are extracted as their own forms; stub here.
         return NormNode::leaf(node.kind());
     }
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
@@ -27,7 +27,11 @@ pub(super) fn emit_node(
 fn is_nested_form_kind(kind: &str) -> bool {
     matches!(
         kind,
-        "arrow_function" | "function_expression" | "generator_function"
+        "arrow_function"
+            | "function_expression"
+            | "generator_function"
+            | "function_declaration"
+            | "generator_function_declaration"
     )
 }
 
@@ -212,9 +216,21 @@ mod tests {
 "#;
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(Path::new("demo.ts"), src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut func = None;
+        let mut c = root.walk();
+        for child in root.children(&mut c) {
+            if child.kind() == "function_declaration" {
+                func = Some(child);
+            }
+        }
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let func = func.expect("func");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let body = func.child_by_field_name("body").expect("body");
         let mut placeholders = PlaceholderMap::default();
-        let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
-        assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
+        let _ = emit_node(body, src.as_bytes(), &mut placeholders);
+        assert!(placeholders.ident_trace.iter().any(|s| s == "x"));
     }
 
     #[test]

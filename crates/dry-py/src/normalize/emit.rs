@@ -14,9 +14,9 @@ pub(super) fn emit_node(
     if should_skip(node) {
         return NormNode::leaf("skip");
     }
-    if node.kind() == "lambda" {
-        // Nested lambdas are extracted as their own forms; stub in parents.
-        return NormNode::leaf("lambda");
+    if matches!(node.kind(), "lambda" | "function_definition") {
+        // Nested lambdas and defs are extracted as their own forms; stub in parents.
+        return NormNode::leaf(node.kind());
     }
     if let Some(leaf) = try_emit_leaf(node, source, placeholders) {
         return leaf;
@@ -213,13 +213,26 @@ mod tests {
 "#;
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut func = None;
+        let mut c = root.walk();
+        for child in root.children(&mut c) {
+            if child.kind() == "function_definition" {
+                func = Some(child);
+            }
+        }
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let func = func.expect("func");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let body = func.child_by_field_name("body").expect("body");
         let mut placeholders = PlaceholderMap::default();
-        let _ = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
-        assert!(placeholders.ident_trace.iter().any(|s| s == "demo" || s == "x"));
+        let _ = emit_node(body, src.as_bytes(), &mut placeholders);
+        assert!(placeholders.ident_trace.iter().any(|s| s == "x"));
     }
 
     #[test]
     fn emit_covers_comparison_boolean_not_and_augmented() {
+        // dry-rs:ignore. Tree-sitter adapter parallel with dry-go/dry-ts; intentional.
         let src = r"def demo(a, b):
     if a < b and not a:
         a += 1
@@ -227,9 +240,21 @@ mod tests {
 ";
         #[expect(clippy::expect_used, reason = "test setup")]
         let tree = parse_source(src).expect("parse");
+        let root = tree.tree.root_node();
+        let mut func = None;
+        let mut c = root.walk();
+        for child in root.children(&mut c) {
+            if child.kind() == "function_definition" {
+                func = Some(child);
+            }
+        }
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let func = func.expect("func");
+        #[expect(clippy::expect_used, reason = "test setup")]
+        let body = func.child_by_field_name("body").expect("body");
         let mut placeholders = PlaceholderMap::default();
-        let node = emit_node(tree.tree.root_node(), src.as_bytes(), &mut placeholders);
-        assert_eq!(node.label, "module");
+        let node = emit_node(body, src.as_bytes(), &mut placeholders);
+        assert_eq!(node.label, "block");
     }
 
     #[test]
