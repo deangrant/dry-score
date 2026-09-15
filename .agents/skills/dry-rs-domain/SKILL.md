@@ -16,6 +16,7 @@ description: >-
 | [`crates/dry-rs`](../../../crates/dry-rs) | Rust `syn` normalizer implementing `LanguageNormalizer` |
 | [`crates/dry-go`](../../../crates/dry-go) | Go Tree-sitter normalizer implementing `LanguageNormalizer` |
 | [`crates/dry-ts`](../../../crates/dry-ts) | TypeScript Tree-sitter normalizer implementing `LanguageNormalizer` |
+| [`crates/dry-py`](../../../crates/dry-py) | Python Tree-sitter normalizer implementing `LanguageNormalizer` |
 
 Language adapters belong in dedicated crates that reuse `dry-core` comparison.
 
@@ -35,12 +36,15 @@ discover files → parse/normalize → fingerprint index → match → report
   increase counts; scoring uses multiset Jaccard.
 - Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
   test/cfg attrs (language-idiomatic vs Go `_test.go` vs TypeScript
-  `.test.` / `.spec.` / `__tests__`).
-- Go/TS classify **only** by path convention: non-`*_test.go` (and non-TS test
-  paths) stay `Production`, including importable harness packages. Put
-  test-only helpers under those conventions so they do not pair with production.
-- Nested extractable units (`closure` / `func_literal` / arrows) are **stubbed**
-  in parent body fingerprints; nested forms still fingerprint their own bodies.
+  `.test.` / `.spec.` / `__tests__` vs Python `test_*.py` / `*_test.py` /
+  `tests` / `test`).
+- Go/TS/Python classify **only** by path convention: non-`*_test.go` (and
+  non-TS/Python test paths) stay `Production`, including importable harness
+  packages. Put test-only helpers under those conventions so they do not pair
+  with production.
+- Nested extractable units (`closure` / `func_literal` / arrows / `lambda`) are
+  **stubbed** in parent body fingerprints; nested forms still fingerprint their
+  own bodies.
 - Allowlisted macros expand to normalized expr children (`macro_expand:…`) when
   the path is bare or rooted at `std`/`core`/`alloc`; others keep token-tree
   emission.
@@ -73,17 +77,19 @@ discover files → parse/normalize → fingerprint index → match → report
 - Default `walk.exclude` is `target`, `.git`, `fixtures` (replacement list, not
   merge). Add `tests` explicitly to skip test trees.
 - Walker does **not** follow symlinks; a symlink analysis root errors.
-- Go / TypeScript parse fails closed on `has_error` (no forms; analyze records
-  a warning), matching Rust `syn` parse failure.
+- Go / TypeScript / Python parse fails closed on `has_error` (no forms; analyze
+  records a warning), matching Rust `syn` parse failure.
 - Full verify includes dry-go dogfood under
-  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/) and dry-ts
-  dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/)
+  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/), dry-ts dogfood
+  under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/), and dry-py
+  dogfood under [`crates/dry-py/dogfood/`](../../../crates/dry-py/dogfood/)
   (smoke/`findings=0` on tiny non-clone trees—not broad language corpora;
   fixtures + `dry-core` tests cover clone semantics).
 
 ## Suppressions
 
-Full-line `// dry-rs:ignore` (span) or `// dry-rs:ignore-file` (file). See
+Full-line `// dry-rs:ignore` (span) or `// dry-rs:ignore-file` (file); adapters
+use matching markers (`dry-go`, `dry-ts`, `dry-py` with `#` for Python). See
 [`suppress.rs`](../../../crates/dry-rs/src/normalize/suppress.rs) and the
 **dry-dogfood** skill for dogfood cleanup policy.
 

@@ -1,7 +1,7 @@
 //! Suppression markers shared by language adapters.
 //!
 //! Markers must appear as a full-line comment directive (optional leading
-//! whitespace): `//`, `///`, `//!`, or a whole-line `/* … */` / `/** … */`.
+//! whitespace): `//`, `///`, `//!`, `#`, or a whole-line `/* … */` / `/** … */`.
 //! Trailing comments and string/URL substrings do not count.
 
 /// Returns true when the file opts out via `{marker}-file`.
@@ -41,6 +41,9 @@ fn full_line_comment_body(line: &str) -> Option<&str> {
     if let Some(rest) = trimmed.strip_prefix("//") {
         // Allow `///` and `//!` by consuming one extra `/` or `!`.
         let rest = rest.strip_prefix('/').or_else(|| rest.strip_prefix('!')).unwrap_or(rest);
+        return Some(rest.trim_start());
+    }
+    if let Some(rest) = trimmed.strip_prefix('#') {
         return Some(rest.trim_start());
     }
     block_comment_body(trimmed)
@@ -107,6 +110,26 @@ mod tests {
     }
 
     #[test]
+    fn accepts_hash_comment_directives() {
+        // dry-rs:ignore. Hash-comment suppress corpus; parallel with // /* tests intentional.
+        assert!(file_is_ignored(
+            "# dry-rs:ignore-file\ndef a():\n    pass\n",
+            MARKER
+        ));
+        assert!(file_is_ignored(
+            "  # dry-rs:ignore-file\ndef a():\n    pass\n",
+            MARKER
+        ));
+        assert!(span_is_ignored("a\n# dry-rs:ignore\nb\n", 2, 2, MARKER));
+        assert!(span_is_ignored(
+            "a\n# dry-rs:ignore. reason\nb\n",
+            2,
+            2,
+            MARKER
+        ));
+    }
+
+    #[test]
     fn rejects_substring_false_positives() {
         assert!(!span_is_ignored(
             "let s = \"dry-rs:ignore\";\n",
@@ -133,5 +156,11 @@ mod tests {
             1,
             MARKER
         ));
+    }
+
+    #[test]
+    fn rejects_hash_comment_false_positives() {
+        assert!(!span_is_ignored("code  # dry-rs:ignore\n", 1, 1, MARKER));
+        assert!(!span_is_ignored("s = \"# dry-rs:ignore\"\n", 1, 1, MARKER));
     }
 }

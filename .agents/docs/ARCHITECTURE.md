@@ -61,7 +61,7 @@ text, JSON, or both.
 **Runtime bar:**
 
 - Rust toolchain **1.94.0** ([`rust-toolchain.toml`](../../rust-toolchain.toml))
-- Workspace members: `dry-core`, `dry-rs`, `dry-go`, `dry-ts` ([`Cargo.toml`](../../Cargo.toml))
+- Workspace members: `dry-core`, `dry-rs`, `dry-go`, `dry-ts`, `dry-py` ([`Cargo.toml`](../../Cargo.toml))
 - Language adapters implement
   [`LanguageNormalizer`](../../crates/dry-core/src/ports/normalizer.rs) and
   reuse the same comparison engine
@@ -69,8 +69,8 @@ text, JSON, or both.
   a normalizer and thin binary entrypoints
 - `NormNode` + FNV fingerprinting live in `dry-core::norm` (no AST deps)
 - Workspace lint `unsafe_code` is allow so Tree-sitter can link; `dry-core` and
-  `dry-rs` still `#![forbid(unsafe_code)]`. `dry-go` and `dry-ts` write no
-  `unsafe` in-tree.
+  `dry-rs` still `#![forbid(unsafe_code)]`. `dry-go`, `dry-ts`, and `dry-py`
+  write no `unsafe` in-tree.
 
 *Figure: analysis roots and config enter `dry-rs`; `dry-core` walks, normalizes
 via the adapter, compares forms, and emits the report.*
@@ -99,6 +99,7 @@ flowchart LR
 | [`crates/dry-rs`](../../crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
 | [`crates/dry-go`](../../crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 | [`crates/dry-ts`](../../crates/dry-ts) | TypeScript Tree-sitter adapter and the `dry-ts` binary |
+| [`crates/dry-py`](../../crates/dry-py) | Python Tree-sitter adapter and the `dry-py` binary |
 
 Adapters depend on `dry-core` and plug in through `LanguageNormalizer`.
 
@@ -156,11 +157,12 @@ forms (`FormKind`) never pair. Findings sort most exact to least exact.
 
 `FormKind` is language-idiomatic: Rust uses `#[test]` / `#[cfg(test)]` (and
 enclosing cfg); Go uses the `*_test.go` filename suffix only; TypeScript uses
-`.test.` / `.spec.` filename markers or a `__tests__` path component. Importable
-shared harness packages (for example Go `internal/testutil` in ordinary `.go`
-files) stay `Production` by design so clones against real production code remain
-visible—put test-only helpers in `*_test.go` (or TS test paths) to exclude them
-from production pairing.
+`.test.` / `.spec.` filename markers or a `__tests__` path component; Python
+uses `test_*.py` / `*_test.py` filenames or a `tests` / `test` path component.
+Importable shared harness packages (for example Go `internal/testutil` in
+ordinary `.go` files) stay `Production` by design so clones against real
+production code remain visible—put test-only helpers in `*_test.go` (or TS/Python
+test paths) to exclude them from production pairing.
 
 JSON reports serialize fingerprints as a map from hash string/number to count
 (BREAKING versus the former unique-hash set).
@@ -258,6 +260,22 @@ the CLI, calls `dry_core::analyze` with `RustNormalizer`, then emits the report.
 | Emit | [`normalize/emit.rs`](../../crates/dry-ts/src/normalize/emit.rs) | CST → `NormNode`; nested arrows/function expressions stubbed in parent bags |
 | Suppress | [`normalize/suppress.rs`](../../crates/dry-ts/src/normalize/suppress.rs) | Full-line `dry-ts:ignore` (`//`, `///`, `//!`, `/* */`) |
 
+## `dry-py` module map
+
+[`main.rs`](../../crates/dry-py/src/main.rs) calls
+[`runner::run_from_env`](../../crates/dry-py/src/runner.rs), which parses argv via
+`dry-core` (`bin_name: "dry-py"`, force `extensions = ["py"]`) and runs
+[`PyNormalizer`](../../crates/dry-py/src/normalize/mod.rs).
+
+| Area | Path | Notes |
+| ---- | ---- | ----- |
+| Runner | [`runner.rs`](../../crates/dry-py/src/runner.rs) | Thin `CliOptions` + `run_analysis` |
+| Normalizer | [`normalize/mod.rs`](../../crates/dry-py/src/normalize/mod.rs) | `PyNormalizer` / `LanguageNormalizer`; skips `*.pyi` |
+| Parse | [`normalize/parse.rs`](../../crates/dry-py/src/normalize/parse.rs) | Thread-local Tree-sitter parser; `has_error` fails closed (no forms) |
+| Extract | [`normalize/extract/`](../../crates/dry-py/src/normalize/extract/) | Funcs, methods, lambdas; kind from `test_*.py` / `*_test.py` / `tests` / `test` |
+| Emit | [`normalize/emit.rs`](../../crates/dry-py/src/normalize/emit.rs) | CST → `NormNode`; nested `lambda` stubbed in parent bags |
+| Suppress | [`normalize/suppress.rs`](../../crates/dry-py/src/normalize/suppress.rs) | Full-line `dry-py:ignore` (`#`) |
+
 *Figure: `main` → runner → CLI and analyze; the normalizer extracts, emits,
 fingerprints, and applies suppress markers.*
 
@@ -290,7 +308,7 @@ flowchart TB
 | Config discovery/load do not follow symlinks | Symlinked `dry.toml` / `--config` paths are ignored or rejected |
 | Production and test forms never pair | Avoids false clones across `FormKind` |
 | No `#[allow]`; use `#[expect(..., reason = "...")]` | Matches workspace lints; see [rust-style-guide](../skills/rust-style-guide/SKILL.md) |
-| Workspace members are `dry-core`, `dry-rs`, `dry-go`, and `dry-ts` | Update this document if you add or rename crates |
+| Workspace members are `dry-core`, `dry-rs`, `dry-go`, `dry-ts`, and `dry-py` | Update this document if you add or rename crates |
 | Clippy-driven CC-split dispatch shells with full-line `// dry-*:ignore` are Keep-as-is | Do not re-merge `try_emit_*` / one-flag CLI / adapter-parallel shells solely to reduce ignore noise; see [dry-dogfood](../skills/dry-dogfood/SKILL.md) and [design-scan](../commands/design-scan.md) |
 
 ## Exit codes
@@ -318,7 +336,7 @@ execution.
 ## Verification and agent layout
 
 Run full local gates (fmt, Clippy, deny, audit, test, dry-rs self-scan and
-dry-go / dry-ts dogfood scans with `findings=0`):
+dry-go / dry-ts / dry-py dogfood scans with `findings=0`):
 
 ```bash
 ./scripts/verify.sh full
@@ -330,13 +348,14 @@ For a faster loop (fmt, Clippy, test only):
 ./scripts/verify.sh lite
 ```
 
-The dry-go gate scans [`crates/dry-go/dogfood/`](../../crates/dry-go/dogfood/)
-and the dry-ts gate scans [`crates/dry-ts/dogfood/`](../../crates/dry-ts/dogfood/)
+The dry-go gate scans [`crates/dry-go/dogfood/`](../../crates/dry-go/dogfood/),
+the dry-ts gate scans [`crates/dry-ts/dogfood/`](../../crates/dry-ts/dogfood/),
+and the dry-py gate scans [`crates/dry-py/dogfood/`](../../crates/dry-py/dogfood/)
 (tiny unique non-clone corpora) because this repo has no production Go /
-TypeScript sources outside fixtures. Dogfood proves the binary can scan a clean
-tree with `findings=0`; it is **not** a broad language corpus. Clone detection
-semantics are covered by each adapter’s `fixtures_integration` tests plus
-`dry-core` compare unit tests (exact / near-miss / clustering).
+TypeScript / Python sources outside fixtures. Dogfood proves the binary can
+scan a clean tree with `findings=0`; it is **not** a broad language corpus.
+Clone detection semantics are covered by each adapter’s `fixtures_integration`
+tests plus `dry-core` compare unit tests (exact / near-miss / clustering).
 Detail: [verify-gates](../skills/verify-gates/SKILL.md), or run `/verify`.
 
 Agent support lives under `.agents/`:

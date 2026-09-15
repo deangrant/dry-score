@@ -6,8 +6,8 @@ fingerprint bags, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
-The shipped CLIs are **`dry-rs`** (Rust), **`dry-go`** (Go), and **`dry-ts`**
-(TypeScript).
+The shipped CLIs are **`dry-rs`** (Rust), **`dry-go`** (Go), **`dry-ts`**
+(TypeScript), and **`dry-py`** (Python).
 
 ## Requirements
 
@@ -116,7 +116,8 @@ Pipeline: discover files → parse/normalize → fingerprint → match → repor
    non-threshold-closed components split into exclusive pairs).
 3. Production and test forms (`FormKind`) never pair. Kind is
    language-idiomatic: Rust attrs/`cfg(test)`, Go `*_test.go` only, TypeScript
-   `.test.` / `.spec.` / `__tests__`. Importable harness packages outside those
+   `.test.` / `.spec.` / `__tests__`, Python `test_*.py` / `*_test.py` /
+   `tests` / `test` path components. Importable harness packages outside those
    conventions stay `Production` so prod clones remain visible.
 4. Findings sort most exact → least exact.
 
@@ -181,7 +182,7 @@ Local parity:
 
 ```bash
 ./scripts/verify.sh lite   # fmt, clippy, test
-./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go + dry-ts dogfood findings=0
+./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go + dry-ts + dry-py dogfood findings=0
 ```
 
 Contributor conventions: [AGENTS.md](AGENTS.md).
@@ -194,6 +195,7 @@ Contributor conventions: [AGENTS.md](AGENTS.md).
 | [`crates/dry-rs`](crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
 | [`crates/dry-go`](crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
 | [`crates/dry-ts`](crates/dry-ts) | TypeScript Tree-sitter adapter and the `dry-ts` binary |
+| [`crates/dry-py`](crates/dry-py) | Python Tree-sitter adapter and the `dry-py` binary |
 
 Language adapters implement `LanguageNormalizer` and reuse `dry-core`
 comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
@@ -229,6 +231,21 @@ forms and surface as analyze warnings (same fail-closed contract as `dry-rs`).
 Full verify and CI dogfood scan [`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/)
 (tiny unique non-clone smoke tree; clone types are covered by fixtures, not
 dogfood breadth). The adapter itself is Rust.
+
+### Python (`dry-py`)
+
+```bash
+cargo build --release -p dry-py
+./target/release/dry-py path/to/package
+```
+
+`dry-py` forces `walk.extensions` to `["py"]`. Stub files (`*.pyi`) are skipped.
+Suppress with full-line `# dry-py:ignore` / `# dry-py:ignore-file`. Parsing uses
+Tree-sitter Python; syntax errors discard the file’s forms and surface as
+analyze warnings (same fail-closed contract as `dry-rs`). Full verify and CI
+dogfood scan [`crates/dry-py/dogfood/`](crates/dry-py/dogfood/) (tiny unique
+non-clone smoke tree; clone types are covered by fixtures, not dogfood breadth).
+The adapter itself is Rust.
 
 ## License
 

@@ -67,6 +67,13 @@ run_full() {
   if ! echo "$report" | grep -q 'findings=0'; then
     fail "dry-ts reported findings (expected findings=0)"
   fi
+
+  step "dry-py dogfood scan (require findings=0)"
+  report="$(cargo run -q -p dry-py -- crates/dry-py/dogfood --format text --no-fail-on-findings)"
+  echo "$report"
+  if ! echo "$report" | grep -q 'findings=0'; then
+    fail "dry-py reported findings (expected findings=0)"
+  fi
 }
 
 echo "verify: tier=$TIER (cwd=$ROOT)"

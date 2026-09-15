@@ -1,6 +1,12 @@
 [workspace]
 resolver = "3"
-members = ["crates/dry-rs", "crates/dry-core", "crates/dry-go", "crates/dry-ts"]
+members = [
+    "crates/dry-rs",
+    "crates/dry-core",
+    "crates/dry-go",
+    "crates/dry-ts",
+    "crates/dry-py",
+]
 
 [workspace.package]
 edition = "2024"
@@ -17,6 +23,7 @@ dry-core = { path = "crates/dry-core", version = "0.1.0" }
 tree-sitter = "0.26"
 tree-sitter-go = "0.25"
 tree-sitter-typescript = "0.23"
+tree-sitter-python = "0.25"
 
 [workspace.lints.rust]
 unsafe_code = "allow"
