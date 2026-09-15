@@ -24,6 +24,7 @@ a style linter or complexity scorer.
 | Core | `crates/dry-core` | Domain, walk, config, analyze, compare, shared CLI/runner, reporters (no AST deps) |
 | Rust adapter | `crates/dry-rs` | Rust `syn` normalizer and the `dry-rs` binary |
 | Go adapter | `crates/dry-go` | Go Tree-sitter normalizer and the `dry-go` binary |
+| TypeScript adapter | `crates/dry-ts` | TypeScript Tree-sitter normalizer and the `dry-ts` binary |
 
 **Hard invariants (never violate):**
 
@@ -33,7 +34,7 @@ a style linter or complexity scorer.
 - `emit/shared` must not import `expr` (recursive wraps live in `expr/wrap`).
 - The walker does not follow symlinks.
 - Production and test forms (`FormKind`) never pair.
-- Workspace members are `dry-core`, `dry-rs`, and `dry-go`.
+- Workspace members are `dry-core`, `dry-rs`, `dry-go`, and `dry-ts`.
 - No `#[allow]`. Suppressions must be `#[expect(..., reason = "...")]`.
 
 **Runtime:** Rust toolchain `1.94.0`. Lean loop: `./scripts/verify.sh lite`. Full local
@@ -108,7 +109,8 @@ Read the matching skill **before** editing that area. Load only what the task ne
 | If you are changing… | Read first |
 | -------------------- | ---------- |
 | Normalize, compare, tiers, walk/config map | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) |
-| Go Tree-sitter adapter (`dry-go`) | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) + ARCHITECTURE |
+| Go adapter (`dry-go`) | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) + ARCHITECTURE |
+| TypeScript adapter (`dry-ts`) | [`dry-rs-domain`](.agents/skills/dry-rs-domain/) + ARCHITECTURE |
 | Self-scan findings, `// dry-rs:ignore`, dogfood cleanup | [`dry-dogfood`](.agents/skills/dry-dogfood/) |
 | Local verify tiers, gate prohibitions | [`verify-gates`](.agents/skills/verify-gates/) |
 | Rust style, docs, naming, API conventions | [`rust-style-guide`](.agents/skills/rust-style-guide/) |
@@ -163,7 +165,7 @@ The directory is symlinked from [`.cursor/commands`](.cursor/commands).
 
 Prefer repository commands over manually recreating equivalent workflows.
 
-- `/verify` — `./scripts/verify.sh` lite or full (fmt, Clippy, test; full adds deny, audit, dry-rs findings=0)
+- `/verify` — `./scripts/verify.sh` lite or full (fmt, Clippy, test; full adds deny, audit, dry-rs / dry-go / dry-ts findings=0)
 - `/dry-dogfood` — clear dry-rs self-scan findings to zero without relaxing gates
 - `/design-scan` — style + SOLID checklist with must-fix / nice-to-have / keep-as-is
 
@@ -190,7 +192,7 @@ A change is complete when:
 | ------------ | -------------------- |
 | Any `.rs` / workspace code | `./scripts/verify.sh lite` (or the equivalent failing step while iterating) |
 | Dogfood or module splits | `./scripts/verify.sh full` (or `/verify`) |
-| Merge-ready claim | `/verify` full (`deny`, `audit`, dry-rs `findings=0`) |
+| Merge-ready claim | `/verify` full (`deny`, `audit`, dry-rs / dry-go / dry-ts `findings=0`) |
 
 - Do not claim a check passed unless it was actually run and passed.
 - If verification cannot be completed, clearly state what was not run and why.

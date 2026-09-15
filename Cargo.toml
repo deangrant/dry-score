@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/dry-rs", "crates/dry-core", "crates/dry-go"]
+members = ["crates/dry-rs", "crates/dry-core", "crates/dry-go", "crates/dry-ts"]
 
 [workspace.package]
 edition = "2024"
@@ -15,6 +15,7 @@ proc-macro2 = { version = "1", features = ["span-locations"] }
 dry-core = { path = "crates/dry-core", version = "0.1.0" }
 tree-sitter = "0.26"
 tree-sitter-go = "0.25"
+tree-sitter-typescript = "0.23"
 
 [workspace.lints.rust]
 unsafe_code = "allow"

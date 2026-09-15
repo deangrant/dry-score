@@ -15,6 +15,7 @@ description: >-
 | [`crates/dry-core`](../../../crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner — **no** AST deps |
 | [`crates/dry-rs`](../../../crates/dry-rs) | Rust `syn` normalizer implementing `LanguageNormalizer` |
 | [`crates/dry-go`](../../../crates/dry-go) | Go Tree-sitter normalizer implementing `LanguageNormalizer` |
+| [`crates/dry-ts`](../../../crates/dry-ts) | TypeScript Tree-sitter normalizer implementing `LanguageNormalizer` |
 
 Language adapters belong in dedicated crates that reuse `dry-core` comparison.
 
@@ -33,7 +34,8 @@ discover files → parse/normalize → fingerprint index → match → report
 - Fingerprints are a **bag** (`BTreeMap<u64, u32>`): repeated identical subtrees
   increase counts; scoring uses multiset Jaccard.
 - Closures emit named forms (`$closure:L{line}`); Kind follows enclosing
-  test/cfg attrs (language-idiomatic vs Go `_test.go`).
+  test/cfg attrs (language-idiomatic vs Go `_test.go` vs TypeScript
+  `.test.` / `.spec.` / `__tests__`).
 - Allowlisted macros expand to normalized expr children (`macro_expand:…`);
   others keep token-tree emission.
 - Emit helpers: recursive expr wrappers live under `normalize/emit/expr/`;
@@ -62,9 +64,11 @@ discover files → parse/normalize → fingerprint index → match → report
   `walk.min_lines`, `walk.max_file_bytes`, `walk.exclude`, `output.format`.
 - Default `walk.exclude` includes `tests` (replacement list, not merge).
 - Walker does **not** follow symlinks; a symlink analysis root errors.
-- Go parse soft-fails on `has_error` and records `NormalizeOutcome.warnings`.
+- Go / TypeScript parse soft-fails on `has_error` and records
+  `NormalizeOutcome.warnings`.
 - Full verify includes dry-go dogfood under
-  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/).
+  [`crates/dry-go/dogfood/`](../../../crates/dry-go/dogfood/) and dry-ts
+  dogfood under [`crates/dry-ts/dogfood/`](../../../crates/dry-ts/dogfood/).
 
 ## Suppressions
 

@@ -6,7 +6,8 @@ fingerprint bags, and routes findings into agentic tiers for CI and automation.
 
 It is a duplication detector. It is not a style linter or a complexity scorer.
 
-The shipped CLIs are **`dry-rs`** (Rust) and **`dry-go`** (Go).
+The shipped CLIs are **`dry-rs`** (Rust), **`dry-go`** (Go), and **`dry-ts`**
+(TypeScript).
 
 ## Requirements
 
@@ -167,7 +168,7 @@ Local parity:
 
 ```bash
 ./scripts/verify.sh lite   # fmt, clippy, test
-./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go dogfood findings=0
+./scripts/verify.sh full   # lite + deny, audit, dry-rs + dry-go + dry-ts dogfood findings=0
 ```
 
 Contributor conventions: [AGENTS.md](AGENTS.md).
@@ -179,6 +180,7 @@ Contributor conventions: [AGENTS.md](AGENTS.md).
 | [`crates/dry-core`](crates/dry-core) | Language-agnostic domain, walk, config, compare, shared CLI/runner, reporters (no AST deps) |
 | [`crates/dry-rs`](crates/dry-rs) | Rust `syn` adapter and the `dry-rs` binary |
 | [`crates/dry-go`](crates/dry-go) | Go Tree-sitter adapter and the `dry-go` binary |
+| [`crates/dry-ts`](crates/dry-ts) | TypeScript Tree-sitter adapter and the `dry-ts` binary |
 
 Language adapters implement `LanguageNormalizer` and reuse `dry-core`
 comparison. See [ARCHITECTURE](.agents/docs/ARCHITECTURE.md) for the pipeline
@@ -196,6 +198,20 @@ cargo build --release -p dry-go
 grammar at build time); recoverable syntax errors soft-fail with a partial CST
 warning. Full verify and CI dogfood scan
 [`crates/dry-go/dogfood/`](crates/dry-go/dogfood/). The adapter itself is Rust.
+
+### TypeScript (`dry-ts`)
+
+```bash
+cargo build --release -p dry-ts
+./target/release/dry-ts path/to/project
+```
+
+`dry-ts` forces `walk.extensions` to `["ts", "tsx", "mts", "cts"]` (not `.js` /
+`.jsx`). Declaration files (`*.d.ts` / `*.d.mts` / `*.d.cts`) are skipped.
+Suppress with full-line `// dry-ts:ignore` / `// dry-ts:ignore-file`. Parsing
+uses Tree-sitter TypeScript / TSX grammars; recoverable syntax errors soft-fail
+with a partial CST warning. Full verify and CI dogfood scan
+[`crates/dry-ts/dogfood/`](crates/dry-ts/dogfood/). The adapter itself is Rust.
 
 ## License
 
