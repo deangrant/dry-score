@@ -88,13 +88,29 @@ pub fn parse_args(
     args: impl IntoIterator<Item = String>,
     options: &CliOptions,
 ) -> Result<CliArgs, CliError> {
+    finish_args(read_raw_flags(args, options)?, options)
+}
+
+#[cfg(test)]
+fn parse_args_at(
+    cwd: &Path,
+    args: impl IntoIterator<Item = String>,
+    options: &CliOptions,
+) -> Result<CliArgs, CliError> {
+    finish_args_at(cwd, read_raw_flags(args, options)?, options)
+}
+
+fn read_raw_flags(
+    args: impl IntoIterator<Item = String>,
+    options: &CliOptions,
+) -> Result<RawFlags, CliError> {
     let mut args = args.into_iter();
     let _exe = args.next();
     let mut raw = RawFlags::default();
     while let Some(arg) = args.next() {
         apply_arg(&arg, &mut args, &mut raw, options)?;
     }
-    finish_args(raw, options)
+    Ok(raw)
 }
 
 #[derive(Debug, Default)]
@@ -114,10 +130,33 @@ struct RawFlags {
 }
 
 fn finish_args(mut raw: RawFlags, options: &CliOptions) -> Result<CliArgs, CliError> {
+    ensure_default_path(&mut raw);
+    let config = load_effective_config(raw.config_path.as_deref(), &raw.paths[0])?;
+    finish_loaded(raw, options, config)
+}
+
+#[cfg(test)]
+fn finish_args_at(
+    cwd: &Path,
+    mut raw: RawFlags,
+    options: &CliOptions,
+) -> Result<CliArgs, CliError> {
+    ensure_default_path(&mut raw);
+    let config = load_effective_config_at(cwd, raw.config_path.as_deref(), &raw.paths[0])?;
+    finish_loaded(raw, options, config)
+}
+
+fn ensure_default_path(raw: &mut RawFlags) {
     if raw.paths.is_empty() {
         raw.paths.push(PathBuf::from("."));
     }
-    let mut config = load_effective_config(raw.config_path.as_deref(), &raw.paths[0])?;
+}
+
+fn finish_loaded(
+    raw: RawFlags,
+    options: &CliOptions,
+    mut config: Config,
+) -> Result<CliArgs, CliError> {
     overlay_cli_onto_config(&raw, &mut config);
     reject_cli_extensions_when_forced(&raw, options)?;
     apply_forced_extensions(options, &mut config);
@@ -153,14 +192,22 @@ fn validate_cli_config(config: &Config) -> Result<(), CliError> {
 }
 
 fn load_effective_config(explicit: Option<&Path>, first_root: &Path) -> Result<Config, CliError> {
+    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    load_effective_config_at(&cwd, explicit, first_root)
+}
+
+fn load_effective_config_at(
+    cwd: &Path,
+    explicit: Option<&Path>,
+    first_root: &Path,
+) -> Result<Config, CliError> {
     if let Some(path) = explicit {
         return load_config(path).map_err(|err| CliError::usage(err.to_string()));
     }
-    let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    if let Some(found) = discover_config(&cwd) {
+    if let Some(found) = discover_config(cwd) {
         return load_config(&found).map_err(|err| CliError::usage(err.to_string()));
     }
-    if let Some(root) = analysis_root_for_discovery(&cwd, first_root)
+    if let Some(root) = analysis_root_for_discovery(cwd, first_root)
         && let Some(found) = discover_config(&root)
     {
         return load_config(&found).map_err(|err| CliError::usage(err.to_string()));

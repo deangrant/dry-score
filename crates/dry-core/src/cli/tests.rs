@@ -19,6 +19,10 @@ fn parse(items: &[&str]) -> Result<CliArgs, CliError> {
     parse_args(args(items), &opts())
 }
 
+fn parse_at(cwd: &Path, items: &[&str]) -> Result<CliArgs, CliError> {
+    parse_args_at(cwd, args(items), &opts())
+}
+
 #[test]
 fn parse_defaults_and_flags() {
     let parsed = parse(&["src", "--threshold", "0.9", "--format", "json"]);
@@ -223,10 +227,7 @@ fn explicit_config_path() {
     let stamp = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
     let bare = std::env::temp_dir().join(format!("dry-core-cli-bare-{stamp}"));
     assert!(fs::create_dir_all(&bare).is_ok());
-    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    assert!(env::set_current_dir(&bare).is_ok());
-    let defaulted = load_effective_config(None, Path::new("."));
-    assert!(env::set_current_dir(&previous).is_ok());
+    let defaulted = load_effective_config_at(&bare, None, Path::new("."));
     assert!(defaulted.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let defaulted = defaulted.expect("ok");
@@ -243,15 +244,16 @@ fn discovers_config_from_analysis_root_when_cwd_has_none() {
     assert!(fs::create_dir_all(&bare).is_ok());
     assert!(fs::create_dir_all(&root).is_ok());
     assert!(fs::write(root.join("dry.toml"), "[gate]\nthreshold = 0.71\n").is_ok());
-    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    assert!(env::set_current_dir(&bare).is_ok());
     let root_s = root.to_string_lossy().into_owned();
-    let parsed = parse(&[&root_s]);
-    assert!(env::set_current_dir(previous).is_ok());
+    let parsed = parse_at(&bare, &[&root_s]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     let parsed = parsed.expect("ok");
-    assert!((parsed.config.gate.threshold - 0.71).abs() < f64::EPSILON);
+    let threshold = parsed.config.gate.threshold;
+    assert!(
+        (threshold - 0.71).abs() < f64::EPSILON,
+        "threshold {threshold} != 0.71"
+    );
     let _ = fs::remove_dir_all(bare);
     let _ = fs::remove_dir_all(root);
 }
@@ -272,11 +274,8 @@ fn cwd_dry_toml_wins_over_analysis_root_config() {
 }
 
 fn parse_threshold_under_cwd(cwd: &Path, root: &Path) -> f64 {
-    let previous = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    assert!(env::set_current_dir(cwd).is_ok());
     let root_s = root.to_string_lossy().into_owned();
-    let parsed = parse(&[&root_s]);
-    assert!(env::set_current_dir(previous).is_ok());
+    let parsed = parse_at(cwd, &[&root_s]);
     assert!(parsed.is_ok());
     #[expect(clippy::expect_used, reason = "test")]
     parsed.expect("ok").config.gate.threshold
